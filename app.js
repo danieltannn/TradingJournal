@@ -7,11 +7,10 @@ let activeTab = 0;
 let pages = {};
 
 const TABS = [
-  { label: 'Summary',       icon: 'ti-layout-dashboard' },
-  { label: 'Deposits',      icon: 'ti-wallet' },
-  { label: 'Open Trades',   icon: 'ti-lock-open' },
-  { label: 'Closed Trades', icon: 'ti-lock' },
-  { label: 'All Transactions', icon: 'ti-list' }
+  { label: 'Summary',      icon: 'ti-layout-dashboard' },
+  { label: 'Deposits',     icon: 'ti-wallet' },
+  { label: 'Trades',       icon: 'ti-arrows-exchange' },
+  { label: 'All Ledger',   icon: 'ti-list' }
 ];
 
 // ── Utility ────────────────────────────────────────────────────────────────
@@ -60,50 +59,104 @@ function parseCSV(text) {
 // ── Data processing ────────────────────────────────────────────────────────
 function processData(rows) {
   const deposits = rows.filter(r => r['Type'] === 'Money Movement');
-  const trades   = rows.filter(r => r['Type'] === 'Trade');
-  const expiries = rows.filter(r => r['Type'] === 'Receive Deliver' && r['Sub Type'] === 'Expiration');
+  const tradeRows = rows.filter(r => r['Type'] === 'Trade');
+  const expiries  = rows.filter(r => r['Type'] === 'Receive Deliver' && r['Sub Type'] === 'Expiration');
 
-  // Group trade legs by symbol
-  const tradeGroups = {};
-  trades.forEach(r => {
-    const sym = r['Symbol'] || '';
-    if (!tradeGroups[sym]) tradeGroups[sym] = [];
-    tradeGroups[sym].push(r);
+  // Group trade legs by Order #
+  const orderMap = {};
+  tradeRows.forEach(r => {
+    const oid = r['Order #'];
+    if (!oid) return;
+    if (!orderMap[oid]) orderMap[oid] = [];
+    orderMap[oid].push(r);
   });
 
-  // Symbols with any open leg
-  const openSyms = new Set(
-    trades.filter(r => (r['Action'] || '').includes('OPEN')).map(r => r['Symbol'])
-  );
+  // Map each symbol to the open order that created it
+  const symToOpenOrder = {};
+  Object.entries(orderMap).forEach(([oid, legs]) => {
+    if (legs.some(l => l['Action'].includes('OPEN'))) {
+      legs.forEach(l => { symToOpenOrder[l['Symbol']] = oid; });
+    }
+  });
 
-  // Symbols that have been closed or expired
-  const closedSyms = new Set([
-    ...trades.filter(r => (r['Action'] || '').includes('CLOSE')).map(r => r['Symbol']),
-    ...expiries.map(r => r['Symbol'])
-  ]);
+  // Map open orders → their corresponding close orders and expiry rows
+  const openToCloseOrders = {};
+  const openToExpiries = {};
 
-  const trulyOpen   = [...openSyms].filter(s => !closedSyms.has(s));
-  const trulyClosed = [...openSyms].filter(s =>  closedSyms.has(s));
+  Object.entries(orderMap).forEach(([oid, legs]) => {
+    if (legs.every(l => l['Action'].includes('CLOSE'))) {
+      legs.forEach(l => {
+        const parent = symToOpenOrder[l['Symbol']];
+        if (!parent) return;
+        if (!openToCloseOrders[parent]) openToCloseOrders[parent] = [];
+        if (!openToCloseOrders[parent].includes(oid)) openToCloseOrders[parent].push(oid);
+      });
+    }
+  });
 
-  // P&L per symbol (all trade legs + expiry rows)
-  const pnlBySymbol = {};
-  [...trulyOpen, ...trulyClosed].forEach(sym => {
-    const symRows = [...(tradeGroups[sym] || []), ...expiries.filter(e => e['Symbol'] === sym)];
-    let net = 0;
-    symRows.forEach(r => {
-      net += parseVal(r['Value']);
-      net += parseVal(r['Commissions']);
-      net -= Math.abs(parseVal(r['Fees']));
+  expiries.forEach(exp => {
+    const parent = symToOpenOrder[exp['Symbol']];
+    if (!parent) return;
+    if (!openToExpiries[parent]) openToExpiries[parent] = [];
+    openToExpiries[parent].push(exp);
+  });
+
+  // Build position objects — one per open order
+  const positions = [];
+  Object.entries(orderMap).forEach(([oid, legs]) => {
+    const openLegs = legs.filter(l => l['Action'].includes('OPEN'));
+    if (!openLegs.length) return;
+
+    const closeOids   = openToCloseOrders[oid] || [];
+    const expiryRows  = openToExpiries[oid] || [];
+    const closeLegs   = closeOids.flatMap(cid => orderMap[cid] || []);
+    const isClosed    = closeLegs.length > 0 || expiryRows.length > 0;
+    const isExpired   = expiryRows.length > 0;
+
+    const sample    = openLegs[0];
+    const openDate  = openLegs.reduce((min, l) => l['Date'] < min ? l['Date'] : min, openLegs[0]['Date']);
+    const allClose  = [...closeLegs, ...expiryRows];
+    const closeDate = allClose.length
+      ? allClose.reduce((max, l) => l['Date'] > max ? l['Date'] : max, allClose[0]['Date'])
+      : null;
+
+    const openTotal  = openLegs.reduce((s, l) => s + parseVal(l['Total']), 0);
+    const closeTotal = [...closeLegs, ...expiryRows].reduce((s, l) => s + parseVal(l['Total']), 0);
+    const openComm   = openLegs.reduce((s, l) => s + parseVal(l['Commissions']), 0);
+    const openFees   = openLegs.reduce((s, l) => s - Math.abs(parseVal(l['Fees'])), 0);
+    const closeComm  = closeLegs.reduce((s, l) => s + parseVal(l['Commissions']), 0);
+    const closeFees  = closeLegs.reduce((s, l) => s - Math.abs(parseVal(l['Fees'])), 0);
+    // Net P&L = open total (already net of open comm+fees) + close total (already net of close comm+fees)
+    const netPnl = openTotal + closeTotal;
+
+    positions.push({
+      oid,
+      ul: sample['Underlying Symbol'] || sample['Root Symbol'] || '—',
+      expDate: sample['Expiration Date'] || '—',
+      openDate,
+      closeDate,
+      isClosed,
+      isExpired,
+      openLegs,
+      closeLegs,
+      expiryRows,
+      openTotal,
+      closeTotal,
+      openComm,
+      openFees,
+      closeComm,
+      closeFees,
+      netPnl,
     });
-    pnlBySymbol[sym] = net;
   });
 
-  return { deposits, trades, expiries, tradeGroups, trulyOpen, trulyClosed, pnlBySymbol };
-}
-
-// ── Metric cards ───────────────────────────────────────────────────────────
-function renderMetrics() {
-  const { deposits, trades, trulyOpen, trulyClosed, pnlBySymbol } = processed;
+  // Sort: open first (by open date desc), then closed (by close date desc)
+  positions.sort((a, b) => {
+    if (a.isClosed !== b.isClosed) return a.isClosed ? 1 : -1;
+    const da = a.isClosed ? a.closeDate : a.openDate;
+    const db = b.isClosed ? b.closeDate : b.openDate;
+    return da > db ? -1 : da < db ? 1 : 0;
+  });
 
   const totalDeposits = deposits.filter(r => r['Sub Type'] === 'Deposit')
     .reduce((s, r) => s + parseVal(r['Total']), 0);
@@ -111,18 +164,29 @@ function renderMetrics() {
     .reduce((s, r) => s + parseVal(r['Total']), 0);
   const totalAdj = deposits.filter(r => r['Sub Type'] === 'Balance Adjustment')
     .reduce((s, r) => s + parseVal(r['Total']), 0);
-  const tradePnl = trades.reduce((s, r) =>
+  const tradePnl = tradeRows.reduce((s, r) =>
     s + parseVal(r['Value']) + parseVal(r['Commissions']) - Math.abs(parseVal(r['Fees'])), 0);
   const balance = totalDeposits + totalInterest + totalAdj + tradePnl;
-  const closedPnl = trulyClosed.reduce((s, sym) => s + (pnlBySymbol[sym] || 0), 0);
+
+  return { deposits, tradeRows, expiries, positions, balance, totalDeposits };
+}
+
+// ── Metric cards ───────────────────────────────────────────────────────────
+function renderMetrics() {
+  const { positions, balance, totalDeposits } = processed;
+  const closed    = positions.filter(p => p.isClosed);
+  const open      = positions.filter(p => !p.isClosed);
+  const closedPnl = closed.reduce((s, p) => s + p.netPnl, 0);
+  const winners   = closed.filter(p => p.netPnl > 0).length;
+  const winRate   = closed.length ? Math.round(winners / closed.length * 100) : 0;
 
   const metrics = [
-    { label: 'Account Balance',    value: fmt(balance),           cls: balance   >= 0 ? 'pos' : 'neg' },
-    { label: 'Total Deposited',    value: fmt(totalDeposits),     cls: '' },
-    { label: 'Closed P&L',        value: fmt(closedPnl),         cls: closedPnl >= 0 ? 'pos' : 'neg' },
-    { label: 'Open Positions',     value: trulyOpen.length,       cls: '' },
-    { label: 'Closed Positions',   value: trulyClosed.length,     cls: '' },
-    { label: 'Total Trades',       value: trades.length,          cls: '' },
+    { label: 'Account Balance',  value: fmt(balance),      cls: balance   >= 0 ? 'pos' : 'neg' },
+    { label: 'Total Deposited',  value: fmt(totalDeposits), cls: '' },
+    { label: 'Closed P&L',      value: fmt(closedPnl),    cls: closedPnl >= 0 ? 'pos' : 'neg' },
+    { label: 'Open Positions',   value: open.length,       cls: '' },
+    { label: 'Closed Positions', value: closed.length,     cls: '' },
+    { label: 'Win Rate',         value: winRate + '%',     cls: winRate >= 50 ? 'pos' : 'neg' },
   ];
 
   el('metricsRow').innerHTML = metrics.map(m =>
@@ -153,106 +217,77 @@ window.switchTab = switchTab;
 
 function renderTabContent() {
   const container = el('tabContent');
-  const fns = [renderSummary, renderDeposits, renderOpen, renderClosed, renderAll];
-  fns[activeTab](container);
+  [renderSummary, renderDeposits, renderTrades, renderAll][activeTab](container);
 }
 
-// ── Pagination helper ──────────────────────────────────────────────────────
+// ── Pagination ─────────────────────────────────────────────────────────────
 const PAGE_SIZE = 20;
-
-function paginate(key, rows, renderRow, headers, container) {
-  if (!pages[key]) pages[key] = 1;
-  const total = rows.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  if (pages[key] > totalPages) pages[key] = totalPages;
-  const start = (pages[key] - 1) * PAGE_SIZE;
-  const slice = rows.slice(start, start + PAGE_SIZE);
-
-  const thead = headers.map(h =>
-    `<th${h.w ? ` style="width:${h.w}"` : ''}>${h.label}</th>`
-  ).join('');
-  const tbody = slice.length
-    ? slice.map(renderRow).join('')
-    : `<tr><td colspan="${headers.length}" class="empty">No records found</td></tr>`;
-
-  const pg = `
-    <div class="pg">
-      <span>${total} record${total !== 1 ? 's' : ''}</span>
-      ${pages[key] > 1
-        ? `<button onclick="changePage('${key}',-1)">← Prev</button>` : ''}
-      <span>Page ${pages[key]} / ${totalPages}</span>
-      ${pages[key] < totalPages
-        ? `<button onclick="changePage('${key}',1)">Next →</button>` : ''}
-    </div>`;
-
-  return `<div class="tbl-wrap">
-    <table>
-      <thead><tr>${thead}</tr></thead>
-      <tbody>${tbody}</tbody>
-    </table>
-  </div>${pg}`;
-}
-
 window.changePage = function(key, dir) {
   pages[key] = (pages[key] || 1) + dir;
   renderTabContent();
 };
 
+function paginate(key, rows, renderRow, headers) {
+  if (!pages[key]) pages[key] = 1;
+  const total      = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (pages[key] > totalPages) pages[key] = totalPages;
+  const slice  = rows.slice((pages[key] - 1) * PAGE_SIZE, pages[key] * PAGE_SIZE);
+  const thead  = headers.map(h => `<th${h.w ? ` style="width:${h.w}"` : ''}>${h.label}</th>`).join('');
+  const tbody  = slice.length
+    ? slice.map(renderRow).join('')
+    : `<tr><td colspan="${headers.length}" class="empty">No records found</td></tr>`;
+  const pg = `<div class="pg">
+    <span>${total} record${total !== 1 ? 's' : ''}</span>
+    ${pages[key] > 1 ? `<button onclick="changePage('${key}',-1)">← Prev</button>` : ''}
+    <span>Page ${pages[key]} / ${totalPages}</span>
+    ${pages[key] < totalPages ? `<button onclick="changePage('${key}',1)">Next →</button>` : ''}
+  </div>`;
+  return `<div class="tbl-wrap"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>${pg}`;
+}
+
 // ── Summary tab ────────────────────────────────────────────────────────────
 function renderSummary(container) {
-  const { trulyClosed, pnlBySymbol } = processed;
-
-  const sorted = [...trulyClosed].sort((a, b) => (pnlBySymbol[b] || 0) - (pnlBySymbol[a] || 0));
+  const { positions } = processed;
+  const closed = positions.filter(p => p.isClosed);
+  const sorted = [...closed].sort((a, b) => b.netPnl - a.netPnl);
   const top5   = sorted.slice(0, 5);
   const bot5   = sorted.slice(-5).reverse();
 
-  // Monthly P&L from all trade rows
   const monthPnl = {};
-  processed.trades.forEach(r => {
-    const d = new Date(r['Date']);
+  processed.tradeRows.forEach(r => {
+    const d   = new Date(r['Date']);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const val = parseVal(r['Value']) + parseVal(r['Commissions']) - Math.abs(parseVal(r['Fees']));
     monthPnl[key] = (monthPnl[key] || 0) + val;
   });
   const months = Object.keys(monthPnl).sort();
 
-  const symList = (items) => items.map(s => {
-    const v = pnlBySymbol[s] || 0;
-    return `<div class="sym-row">
-      <span class="sym-name mono">${s}</span>
-      <span class="sym-val ${v >= 0 ? 'pos' : 'neg'}">${fmt(v)}</span>
-    </div>`;
-  }).join('');
+  const symList = items => items.map(p => `
+    <div class="sym-row">
+      <span class="sym-name mono">${p.ul} ${p.expDate}</span>
+      <span class="sym-val ${p.netPnl >= 0 ? 'pos' : 'neg'}">${fmt(p.netPnl)}</span>
+    </div>`).join('');
 
   container.innerHTML = `
     <div class="summary-grid">
-      <div class="summary-card">
-        <h3>Top 5 winners</h3>${symList(top5)}
-      </div>
-      <div class="summary-card">
-        <h3>Top 5 losers</h3>${symList(bot5)}
-      </div>
+      <div class="summary-card"><h3>Top 5 winners</h3>${symList(top5)}</div>
+      <div class="summary-card"><h3>Top 5 losers</h3>${symList(bot5)}</div>
     </div>
     <div class="chart-card">
       <h3>Monthly P&L</h3>
       <div style="position:relative;height:${Math.max(180, months.length * 26)}px">
-        <canvas id="monthChart"
-          role="img"
-          aria-label="Monthly P&L bar chart showing trading performance by month">
-          Monthly P&L data for ${months.length} months.
-        </canvas>
+        <canvas id="monthChart" role="img" aria-label="Monthly P&L bar chart">Monthly P&L data for ${months.length} months.</canvas>
       </div>
     </div>`;
 
-  // Draw chart after DOM is ready
   requestAnimationFrame(() => {
     const canvas = el('monthChart');
     if (!canvas || !window.Chart) return;
     const vals = months.map(m => +monthPnl[m].toFixed(2));
     const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
+    const gridColor  = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
     const labelColor = isDark ? '#a0a09b' : '#6b6b67';
-
     new Chart(canvas, {
       type: 'bar',
       data: {
@@ -269,27 +304,11 @@ function renderSummary(container) {
         }]
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: {
-            ticks: {
-              font: { size: 11 },
-              color: labelColor,
-              autoSkip: false,
-              maxRotation: 45,
-            },
-            grid: { color: gridColor }
-          },
-          y: {
-            ticks: {
-              font: { size: 11 },
-              color: labelColor,
-              callback: v => (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString()
-            },
-            grid: { color: gridColor }
-          }
+          x: { ticks: { font: { size: 11 }, color: labelColor, autoSkip: false, maxRotation: 45 }, grid: { color: gridColor } },
+          y: { ticks: { font: { size: 11 }, color: labelColor, callback: v => (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString() }, grid: { color: gridColor } }
         }
       }
     });
@@ -299,12 +318,9 @@ function renderSummary(container) {
 // ── Deposits tab ───────────────────────────────────────────────────────────
 function renderDeposits(container) {
   const { deposits } = processed;
-  const sorted = [...deposits].sort((a, b) => new Date(b['Date']) - new Date(a['Date']));
-
-  const totalDep = deposits.filter(r => r['Sub Type'] === 'Deposit')
-    .reduce((s, r) => s + parseVal(r['Total']), 0);
-  const totalInt = deposits.filter(r => r['Sub Type'] === 'Credit Interest')
-    .reduce((s, r) => s + parseVal(r['Total']), 0);
+  const sorted    = [...deposits].sort((a, b) => new Date(b['Date']) - new Date(a['Date']));
+  const totalDep  = deposits.filter(r => r['Sub Type'] === 'Deposit').reduce((s, r) => s + parseVal(r['Total']), 0);
+  const totalInt  = deposits.filter(r => r['Sub Type'] === 'Credit Interest').reduce((s, r) => s + parseVal(r['Total']), 0);
 
   container.innerHTML = `
     <div class="section-metrics">
@@ -317,146 +333,159 @@ function renderDeposits(container) {
       return `<tr>
         <td>${fmtDate(r['Date'])}</td>
         <td><span class="badge ${r['Sub Type'] === 'Deposit' ? 'open' : 'closed'}">${r['Sub Type']}</span></td>
-        <td style="max-width:200px">${r['Description']}</td>
+        <td>${r['Description']}</td>
         <td class="${total >= 0 ? 'pos' : 'neg'}">${fmt(total)}</td>
       </tr>`;
     }, [
-      { label: 'Date', w: '90px' },
-      { label: 'Sub type', w: '110px' },
-      { label: 'Description' },
-      { label: 'Amount', w: '90px' }
-    ], container)}`;
+      { label: 'Date', w: '90px' }, { label: 'Type', w: '110px' },
+      { label: 'Description' }, { label: 'Amount', w: '90px' }
+    ])}`;
 }
 
-// ── Open trades tab ────────────────────────────────────────────────────────
-function getOpenRows() {
-  const { trulyOpen, tradeGroups } = processed;
-  return trulyOpen
-    .flatMap(sym => (tradeGroups[sym] || []).filter(r => (r['Action'] || '').includes('OPEN')))
-    .sort((a, b) => new Date(b['Date']) - new Date(a['Date']));
-}
-
-function renderOpen(container) {
-  const rows = getOpenRows();
-  const totalCost = rows.reduce((s, r) => s + parseVal(r['Total']), 0);
+// ── Trades tab (unified open + close side by side) ─────────────────────────
+function renderTrades(container) {
+  const { positions } = processed;
+  const open   = positions.filter(p => !p.isClosed);
+  const closed = positions.filter(p =>  p.isClosed);
+  const closedPnl = closed.reduce((s, p) => s + p.netPnl, 0);
+  const winners   = closed.filter(p => p.netPnl > 0).length;
 
   container.innerHTML = `
     <div class="section-metrics">
-      <div class="metric"><div class="label">Open positions</div><div class="value">${processed.trulyOpen.length}</div></div>
-      <div class="metric"><div class="label">Net credit / debit</div><div class="value ${totalCost >= 0 ? 'pos' : 'neg'}">${fmt(totalCost)}</div></div>
-      <div class="metric"><div class="label">Total legs</div><div class="value">${rows.length}</div></div>
+      <div class="metric"><div class="label">Closed P&L</div><div class="value ${closedPnl >= 0 ? 'pos' : 'neg'}">${fmt(closedPnl)}</div></div>
+      <div class="metric"><div class="label">Open</div><div class="value">${open.length}</div></div>
+      <div class="metric"><div class="label">Closed</div><div class="value">${closed.length}</div></div>
+      <div class="metric"><div class="label">Winners / Losers</div><div class="value">${winners} / ${closed.length - winners}</div></div>
     </div>
     <div class="search-row">
-      <input id="openSearch" placeholder="Search symbol, type…" oninput="filterOpen(this.value)">
+      <input id="tradeSearch" placeholder="Search underlying, symbol…" oninput="filterTrades(this.value)">
+      <select id="tradeFilter" onchange="filterTrades(document.getElementById('tradeSearch').value)">
+        <option value="all">All positions</option>
+        <option value="open">Open only</option>
+        <option value="closed">Closed only</option>
+      </select>
     </div>
-    <div id="openTable">${buildOpenTable(rows)}</div>`;
+    <div id="tradesTable">${buildTradesTable(positions, '', 'all')}</div>`;
 }
 
-window.filterOpen = function(q) {
-  const rows = getOpenRows();
-  const filtered = q
-    ? rows.filter(r => JSON.stringify(r).toLowerCase().includes(q.toLowerCase()))
-    : rows;
-  el('openTable').innerHTML = buildOpenTable(filtered);
+window.filterTrades = function(q) {
+  const filter = el('tradeFilter')?.value || 'all';
+  pages['trades'] = 1;
+  el('tradesTable').innerHTML = buildTradesTable(processed.positions, q || '', filter);
 };
 
-function buildOpenTable(rows) {
-  return paginate('open', rows, r => {
-    const total = parseVal(r['Total']);
-    const cp = r['Call or Put'];
-    return `<tr>
-      <td>${fmtDate(r['Date'])}</td>
-      <td class="mono">${r['Symbol']}</td>
-      <td>${r['Underlying Symbol'] || '—'}</td>
-      <td><span class="badge open">${(r['Sub Type'] || '').replace(' to ', '→')}</span></td>
-      <td>${cp ? `<span class="badge ${cp.toLowerCase()}">${cp[0]}</span>` : '—'}</td>
-      <td>${r['Strike Price'] ? fmt(parseFloat(r['Strike Price']), 0) : '—'}</td>
-      <td>${r['Expiration Date'] || '—'}</td>
-      <td>${r['Quantity'] || '—'}</td>
-      <td>${r['Average Price'] && r['Average Price'] !== '--' ? r['Average Price'] : '—'}</td>
-      <td class="neg">${r['Commissions'] !== '--' && r['Commissions'] ? fmt(parseVal(r['Commissions'])) : '—'}</td>
-      <td class="neg">${r['Fees'] ? fmt(-Math.abs(parseVal(r['Fees']))) : '—'}</td>
-      <td class="${total >= 0 ? 'pos' : 'neg'}">${fmt(total)}</td>
-    </tr>`;
-  }, [
-    { label: 'Date', w: '82px' }, { label: 'Symbol' }, { label: 'U/L', w: '50px' },
-    { label: 'Action', w: '90px' }, { label: 'P/C', w: '40px' }, { label: 'Strike', w: '60px' },
-    { label: 'Exp', w: '80px' }, { label: 'Qty', w: '35px' }, { label: 'Avg px', w: '60px' },
-    { label: 'Comm', w: '55px' }, { label: 'Fees', w: '45px' }, { label: 'Total', w: '80px' }
-  ], null);
+function legsHtml(legs, type) {
+  if (!legs.length) return '<span style="color:var(--text-tertiary);font-size:11px">—</span>';
+  return legs.map(l => {
+    const action = l['Action'] || '';
+    const isSell = action.startsWith('SELL');
+    const cp     = l['Call or Put'];
+    const strike = l['Strike Price'] ? parseFloat(l['Strike Price']).toFixed(0) : '';
+    const qty    = l['Quantity'] || '';
+    const total  = parseVal(l['Total']);
+    const avgPx  = l['Average Price'] && l['Average Price'] !== '--' ? l['Average Price'] : '';
+    const comm   = parseVal(l['Commissions']);
+    const fees   = -Math.abs(parseVal(l['Fees']));
+    return `<div class="leg-row">
+      <span class="leg-action ${isSell ? 'leg-sell' : 'leg-buy'}">${isSell ? 'S' : 'B'}</span>
+      <span class="leg-detail">
+        <span class="mono leg-sym">${l['Symbol'] || '—'}</span>
+        <span class="leg-meta">${cp ? cp[0] : ''} ${strike ? '@' + strike : ''} × ${qty}${avgPx ? ' · px ' + avgPx : ''}</span>
+        <span class="leg-nums">
+          <span class="${total >= 0 ? 'pos' : 'neg'}">${fmt(total)}</span>
+          <span class="leg-cf">comm ${fmt(comm)} · fees ${fmt(fees)}</span>
+        </span>
+      </span>
+    </div>`;
+  }).join('');
 }
 
-// ── Closed trades tab ──────────────────────────────────────────────────────
-function buildClosedSymRows() {
-  const { trulyClosed, pnlBySymbol, tradeGroups, expiries } = processed;
-  return trulyClosed.map(sym => {
-    const symTrades = [...(tradeGroups[sym] || []), ...expiries.filter(e => e['Symbol'] === sym)];
-    const opens  = symTrades.filter(r => (r['Action'] || '').includes('OPEN'));
-    const closes = symTrades.filter(r => (r['Action'] || '').includes('CLOSE'));
-    const allDates  = symTrades.map(r => new Date(r['Date']));
-    const openDate  = new Date(Math.min(...allDates));
-    const closeDate = new Date(Math.max(...allDates));
-    const openVal   = opens.reduce((s, r)  => s + parseVal(r['Total']), 0);
-    const closeVal  = closes.reduce((s, r) => s + parseVal(r['Total']), 0);
-    const comm = symTrades.reduce((s, r) => s + parseVal(r['Commissions']), 0);
-    const fees = symTrades.reduce((s, r) => s - Math.abs(parseVal(r['Fees'])), 0);
-    const pnl  = pnlBySymbol[sym] || 0;
-    const isExpired = symTrades.some(r => r['Type'] === 'Receive Deliver');
-    const sample = opens[0] || symTrades[0];
-    return { sym, openDate, closeDate, openVal, closeVal, comm, fees, pnl, isExpired, sample };
-  }).sort((a, b) => b.closeDate - a.closeDate);
+function buildTradesTable(positions, q, filter) {
+  let rows = positions;
+  if (filter === 'open')   rows = rows.filter(p => !p.isClosed);
+  if (filter === 'closed') rows = rows.filter(p =>  p.isClosed);
+  if (q) {
+    const ql = q.toLowerCase();
+    rows = rows.filter(p =>
+      p.ul.toLowerCase().includes(ql) ||
+      p.expDate.toLowerCase().includes(ql) ||
+      p.openLegs.some(l => l['Symbol'].toLowerCase().includes(ql))
+    );
+  }
+
+  if (!rows.length) {
+    return '<div class="empty">No positions found</div>';
+  }
+
+  if (!pages['trades']) pages['trades'] = 1;
+  const total      = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (pages['trades'] > totalPages) pages['trades'] = totalPages;
+  const slice = rows.slice((pages['trades'] - 1) * PAGE_SIZE, pages['trades'] * PAGE_SIZE);
+
+  const rowsHtml = slice.map(p => {
+    const statusBadge = p.isClosed
+      ? `<span class="badge ${p.isExpired ? 'expired' : 'closed'}">${p.isExpired ? 'Expired' : 'Closed'}</span>`
+      : `<span class="badge open">Open</span>`;
+    const pnlClass = p.netPnl >= 0 ? 'pos' : 'neg';
+    // For open positions, P&L is the open total (credit/debit received to open)
+    const pnlLabel = p.isClosed ? 'Net P&L' : 'Open P&L';
+    const pnlVal   = p.isClosed ? p.netPnl : p.openTotal;
+
+    return `<div class="trade-row ${p.isClosed ? 'trade-closed' : 'trade-open'}">
+      <div class="trade-header">
+        <div class="trade-header-left">
+          <span class="trade-ul">${p.ul}</span>
+          <span class="trade-exp">exp ${p.expDate}</span>
+          ${statusBadge}
+        </div>
+        <div class="trade-pnl">
+          <span class="pnl-label">${pnlLabel}</span>
+          <span class="pnl-value ${pnlClass}">${fmt(pnlVal)}</span>
+        </div>
+      </div>
+      <div class="trade-body">
+        <div class="trade-side">
+          <div class="side-label">
+            <i class="ti ti-lock-open" aria-hidden="true"></i>
+            Opened ${fmtDate(p.openDate)}
+          </div>
+          <div class="legs">${legsHtml(p.openLegs, 'open')}</div>
+          <div class="side-total">
+            Total <span class="${p.openTotal >= 0 ? 'pos' : 'neg'}">${fmt(p.openTotal)}</span>
+          </div>
+        </div>
+        <div class="trade-divider" aria-hidden="true">
+          <div class="divider-line"></div>
+          <i class="ti ti-arrow-right"></i>
+          <div class="divider-line"></div>
+        </div>
+        <div class="trade-side">
+          <div class="side-label">
+            <i class="ti ti-lock" aria-hidden="true"></i>
+            ${p.isClosed ? 'Closed ' + fmtDate(p.closeDate) : 'Not yet closed'}
+          </div>
+          ${p.isClosed
+            ? `<div class="legs">${legsHtml([...p.closeLegs, ...p.expiryRows], 'close')}</div>
+               <div class="side-total">Total <span class="${p.closeTotal >= 0 ? 'pos' : 'neg'}">${fmt(p.closeTotal)}</span></div>`
+            : `<div class="legs open-placeholder"><span class="placeholder-text">Position still open</span></div>`
+          }
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const pg = `<div class="pg">
+    <span>${total} position${total !== 1 ? 's' : ''}</span>
+    ${pages['trades'] > 1 ? `<button onclick="changePage('trades',-1)">← Prev</button>` : ''}
+    <span>Page ${pages['trades']} / ${totalPages}</span>
+    ${pages['trades'] < totalPages ? `<button onclick="changePage('trades',1)">Next →</button>` : ''}
+  </div>`;
+
+  return `<div class="trades-list">${rowsHtml}</div>${pg}`;
 }
 
-function renderClosed(container) {
-  const { trulyClosed, pnlBySymbol } = processed;
-  const closedPnl = trulyClosed.reduce((s, sym) => s + (pnlBySymbol[sym] || 0), 0);
-  const winners   = trulyClosed.filter(s => (pnlBySymbol[s] || 0) > 0).length;
-  const losers    = trulyClosed.filter(s => (pnlBySymbol[s] || 0) < 0).length;
-  const symRows   = buildClosedSymRows();
-
-  container.innerHTML = `
-    <div class="section-metrics">
-      <div class="metric"><div class="label">Total closed P&L</div><div class="value ${closedPnl >= 0 ? 'pos' : 'neg'}">${fmt(closedPnl)}</div></div>
-      <div class="metric"><div class="label">Winners</div><div class="value pos">${winners}</div></div>
-      <div class="metric"><div class="label">Losers</div><div class="value neg">${losers}</div></div>
-      <div class="metric"><div class="label">Win rate</div><div class="value">${trulyClosed.length ? Math.round(winners / trulyClosed.length * 100) : 0}%</div></div>
-    </div>
-    <div class="search-row">
-      <input id="closedSearch" placeholder="Search symbol…" oninput="filterClosed(this.value)" style="max-width:260px">
-    </div>
-    <div id="closedTable">${buildClosedTable(symRows)}</div>`;
-}
-
-window.filterClosed = function(q) {
-  const symRows = buildClosedSymRows();
-  const filtered = q
-    ? symRows.filter(r => r.sym.toLowerCase().includes(q.toLowerCase()))
-    : symRows;
-  el('closedTable').innerHTML = buildClosedTable(filtered);
-};
-
-function buildClosedTable(symRows) {
-  return paginate('closed', symRows, r => `<tr>
-    <td class="mono">${r.sym}</td>
-    <td>${r.sample?.['Underlying Symbol'] || '—'}</td>
-    <td>${fmtDate(r.openDate)}</td>
-    <td>${fmtDate(r.closeDate)}</td>
-    <td class="${r.openVal  >= 0 ? 'pos' : 'neg'}">${fmt(r.openVal)}</td>
-    <td class="${r.closeVal >= 0 ? 'pos' : 'neg'}">${fmt(r.closeVal)}</td>
-    <td class="neg">${fmt(r.comm)}</td>
-    <td class="neg">${fmt(r.fees)}</td>
-    <td class="${r.pnl >= 0 ? 'pos' : 'neg'}" style="font-weight:600">${fmt(r.pnl)}</td>
-    <td><span class="badge ${r.isExpired ? 'expired' : 'closed'}">${r.isExpired ? 'Expired' : 'Closed'}</span></td>
-  </tr>`, [
-    { label: 'Symbol' },       { label: 'U/L', w: '50px' },
-    { label: 'Opened', w: '82px' }, { label: 'Closed', w: '82px' },
-    { label: 'Open cost', w: '80px' }, { label: 'Close val', w: '80px' },
-    { label: 'Comm', w: '60px' }, { label: 'Fees', w: '50px' },
-    { label: 'Net P&L', w: '82px' }, { label: 'Status', w: '70px' }
-  ], null);
-}
-
-// ── All transactions tab ───────────────────────────────────────────────────
+// ── All ledger tab ─────────────────────────────────────────────────────────
 function getAllRows(q, typeFilter) {
   let rows = [...allData].sort((a, b) => new Date(b['Date']) - new Date(a['Date']));
   if (typeFilter) rows = rows.filter(r => r['Type'] === typeFilter);
@@ -488,9 +517,8 @@ window.filterAll = function() {
 function buildAllTable(q, typeFilter) {
   const rows = getAllRows(q, typeFilter);
   return paginate('all', rows, r => {
-    const total = parseVal(r['Total']);
-    const typeBadge = r['Type'] === 'Trade' ? 'trade'
-      : r['Type'] === 'Money Movement' ? 'money' : 'deliver';
+    const total     = parseVal(r['Total']);
+    const typeBadge = r['Type'] === 'Trade' ? 'trade' : r['Type'] === 'Money Movement' ? 'money' : 'deliver';
     return `<tr>
       <td>${fmtDate(r['Date'])}</td>
       <td><span class="badge ${typeBadge}">${r['Type']}</span></td>
@@ -506,7 +534,7 @@ function buildAllTable(q, typeFilter) {
     { label: 'Sub type', w: '90px' }, { label: 'Symbol' },
     { label: 'Description', w: '170px' },
     { label: 'Comm', w: '55px' }, { label: 'Fees', w: '45px' }, { label: 'Total', w: '80px' }
-  ], null);
+  ]);
 }
 
 // ── Load data ──────────────────────────────────────────────────────────────
@@ -514,16 +542,14 @@ function loadCSV(text) {
   allData   = parseCSV(text);
   processed = processData(allData);
   pages     = {};
-
-  el('uploadZone').hidden  = true;
-  el('dashboard').hidden   = false;
-
+  el('uploadZone').hidden = true;
+  el('dashboard').hidden  = false;
   renderMetrics();
   renderTabs();
   renderTabContent();
 }
 
-// ── File input ─────────────────────────────────────────────────────────────
+// ── File handlers ──────────────────────────────────────────────────────────
 function attachFileHandlers() {
   const fileInput = el('fileInput');
   const zone      = el('uploadZone');
@@ -536,15 +562,9 @@ function attachFileHandlers() {
     reader.readAsText(file);
   });
 
-  // Also trigger upload via click on zone
-  zone.addEventListener('click', () => fileInput.click());
+  zone.addEventListener('click',   () => fileInput.click());
   zone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
-
-  // Drag and drop
-  zone.addEventListener('dragover', e => {
-    e.preventDefault();
-    zone.classList.add('drag-over');
-  });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => {
     e.preventDefault();
