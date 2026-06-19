@@ -1,0 +1,758 @@
+'use strict';
+
+// ── GitHub Config (edit these to match your repo) ──────────────────────────
+const GH_OWNER    = 'danieltannn';
+const GH_REPO     = 'TradingJournal';
+const GH_BRANCH   = 'main';
+const GH_FILEPATH     = 'data.json';
+const GH_SGD_FILEPATH = 'sgd.json';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let allData   = [];
+let processed = null;
+let activeTab = 0;
+let pages     = {};
+let ghToken    = localStorage.getItem('gh_token') || '';
+let ghFileSha  = null; // needed by GitHub API to update an existing file
+let sgdData    = [];   // SGD deposit records
+let sgdFileSha = null; // SHA for sgd.json
+
+const TABS = [
+  { label: 'Summary',    icon: 'ti-layout-dashboard' },
+  { label: 'Deposits',   icon: 'ti-wallet' },
+  { label: 'Trades',     icon: 'ti-arrows-exchange' },
+  { label: 'All Ledger', icon: 'ti-list' }
+];
+
+// ── Utility ────────────────────────────────────────────────────────────────
+function parseVal(s) {
+  if (!s || s === '--') return 0;
+  return parseFloat(String(s).replace(/[,$]/g, '')) || 0;
+}
+function fmt(n, dec = 2) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  const abs = Math.abs(n).toFixed(dec);
+  const [int, frac] = abs.split('.');
+  const intFmt = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (n < 0 ? '-' : '') + '$' + (frac !== undefined ? intFmt + '.' + frac : intFmt);
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (isNaN(d)) return String(s);
+  return d.toLocaleDateString('en-US', { year: '2-digit', month: 'short', day: 'numeric' });
+}
+function el(id) { return document.getElementById(id); }
+function rowHash(r) {
+  const key = [r['Date'], r['Type'], r['Sub Type'], r['Action'],
+    r['Symbol'], r['Value'], r['Quantity'], r['Total']].join('|');
+  let h = 5381;
+  for (let i = 0; i < key.length; i++) h = ((h << 5) + h) + key.charCodeAt(i);
+  return (h >>> 0).toString(36);
+}
+
+// ── Status bar ─────────────────────────────────────────────────────────────
+function setStatus(type, msg) {
+  const bar = el('statusBar');
+  if (!bar) return;
+  const icons = { loading: 'ti-loader-2', ok: 'ti-circle-check', warn: 'ti-alert-circle', error: 'ti-circle-x' };
+  bar.innerHTML = `<i class="ti ${icons[type] || 'ti-info-circle'} ${type === 'loading' ? 'spin' : ''}" aria-hidden="true"></i> ${msg}`;
+  bar.className = `status-bar status-${type}`;
+  bar.style.display = 'flex';
+}
+function hideStatus() {
+  const b = el('statusBar');
+  if (!b) return;
+  b.style.display = 'none';
+}
+
+// ── Token panel ────────────────────────────────────────────────────────────
+let _tokenOnSave = null;
+
+function showTokenModal(onSave) {
+  _tokenOnSave = onSave;
+  el('tokenInput').value = ghToken;
+  el('tokenPanel').hidden = false;
+  el('tokenInput').focus();
+  window.scrollTo(0, 0);
+}
+
+function hideTokenPanel() {
+  el('tokenPanel').hidden = true;
+}
+
+function doTokenSave() {
+  const t = el('tokenInput').value.trim();
+  if (!t) {
+    el('tokenInput').style.outline = '2px solid var(--red)';
+    return;
+  }
+  el('tokenInput').style.outline = '';
+  ghToken = t;
+  localStorage.setItem('gh_token', t);
+  hideTokenPanel();
+  if (_tokenOnSave) _tokenOnSave();
+}
+
+// ── GitHub API ─────────────────────────────────────────────────────────────
+function ghHeaders() {
+  return {
+    'Authorization': `Bearer ${ghToken}`,
+    'Accept': 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+}
+
+async function ghGetFile() {
+  const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILEPATH}?ref=${GH_BRANCH}`;
+  const res = await fetch(url, { headers: ghHeaders() });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`GitHub error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  ghFileSha = data.sha;
+  const json = JSON.parse(atob(data.content.replace(/\n/g, '')));
+  return json;
+}
+
+async function ghPutFile(content) {
+  const url  = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_FILEPATH}`;
+  const body = {
+    message: `Update data.json — ${new Date().toISOString().slice(0, 10)}`,
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(content, null, 2)))),
+    branch:  GH_BRANCH,
+  };
+  if (ghFileSha) body.sha = ghFileSha;
+  const res = await fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`GitHub write error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  ghFileSha = data.content.sha;
+}
+
+// ── SGD GitHub file ───────────────────────────────────────────────────────
+async function ghGetSgd() {
+  const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_SGD_FILEPATH}?ref=${GH_BRANCH}`;
+  const res = await fetch(url, { headers: ghHeaders() });
+  if (res.status === 404) return [];
+  if (!res.ok) return [];
+  const data = await res.json();
+  sgdFileSha = data.sha;
+  return JSON.parse(atob(data.content.replace(/\n/g, '')));
+}
+
+async function ghPutSgd(sgdRows) {
+  const url  = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_SGD_FILEPATH}`;
+  const body = {
+    message: `Update sgd.json — ${new Date().toISOString().slice(0, 10)}`,
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(sgdRows, null, 2)))),
+    branch:  GH_BRANCH,
+  };
+  if (sgdFileSha) body.sha = sgdFileSha;
+  const res = await fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`GitHub SGD write error ${res.status}`);
+  const data = await res.json();
+  sgdFileSha = data.content.sha;
+  sgdData = sgdRows;
+}
+
+// ── CSV parser ─────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+  return lines.slice(1).map(line => {
+    const cols = [];
+    let cur = '', inQ = false;
+    for (const c of line) {
+      if (c === '"') { inQ = !inQ; }
+      else if (c === ',' && !inQ) { cols.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    cols.push(cur.trim());
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = (cols[i] || '').replace(/"/g, '').trim(); });
+    return obj;
+  }).filter(r => r['Date']);
+}
+
+// ── Load from GitHub ───────────────────────────────────────────────────────
+async function loadFromGitHub() {
+  if (!GH_OWNER || !GH_REPO) {
+    setStatus('error', 'Set GH_OWNER and GH_REPO at the top of app.js before using the app.');
+    el('uploadZone').hidden = false;
+    return;
+  }
+
+  if (!ghToken) {
+    // No token — try public raw fetch (works if repo is public and data.json exists)
+    setStatus('loading', 'Loading data…');
+    try {
+      const res = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/${GH_FILEPATH}?t=${Date.now()}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json) && json.length > 0) {
+          allData = json; processed = processData(allData);
+          try {
+            const sr = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/${GH_SGD_FILEPATH}?t=${Date.now()}`);
+            if (sr.ok) sgdData = await sr.json();
+          } catch(_) {}
+          showDashboard(); setTimeout(hideStatus, 0); return;
+        }
+      }
+    } catch (_) {}
+    hideStatus();
+    // Prompt for token so we can try authenticated
+    setStatus('warn', 'No data found yet. Add your GitHub token to get started.');
+    el('uploadZone').hidden = false;
+    return;
+  }
+
+  setStatus('loading', 'Loading your trade data from GitHub…');
+  try {
+    const json = await ghGetFile();
+    if (json && Array.isArray(json) && json.length > 0) {
+      allData = json; processed = processData(allData);
+      sgdData = await ghGetSgd();
+      showDashboard();
+      setTimeout(hideStatus, 0);
+    } else {
+      setStatus('ok', '✓ Token saved! No data file yet — upload your CSV below to get started.');
+      el('uploadZone').hidden = false;
+      el('dashboard').hidden = true;
+      window.scrollTo(0, 0);
+    }
+  } catch (e) {
+    setStatus('error', `Could not load from GitHub: ${e.message}`);
+    el('uploadZone').hidden = false;
+    window.scrollTo(0, 0);
+  }
+}
+
+// ── Merge CSV + commit ─────────────────────────────────────────────────────
+async function mergeAndCommit(csvText) {
+  const doMerge = async () => {
+    const newRows = parseCSV(csvText);
+    const existingHashes = new Set(allData.map(r => r._hash || rowHash(r)));
+    const toAdd   = newRows.filter(r => !existingHashes.has(rowHash(r)));
+    const skipped = newRows.length - toAdd.length;
+
+    if (toAdd.length === 0) {
+      setStatus('warn', `No new rows — all ${newRows.length} transactions already saved.`);
+      if (allData.length > 0) showDashboard();
+      return;
+    }
+
+    const merged = [...allData, ...toAdd.map(r => ({ ...r, _hash: rowHash(r) }))];
+
+    setStatus('loading', `Saving ${toAdd.length} new row${toAdd.length !== 1 ? 's' : ''} to GitHub…`);
+    try {
+      await ghPutFile(merged);
+      allData   = merged;
+      processed = processData(allData);
+      setStatus('ok',
+        `✓ ${toAdd.length} new row${toAdd.length !== 1 ? 's' : ''} saved` +
+        (skipped > 0 ? ` · ${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped` : '')
+      );
+      showDashboard();
+      setTimeout(hideStatus, 5000);
+    } catch (e) {
+      setStatus('error', `GitHub save failed: ${e.message} — check your token and repo settings.`);
+    }
+  };
+
+  if (!ghToken) {
+    showTokenModal(doMerge);
+  } else {
+    await doMerge();
+  }
+}
+
+// ── Data processing ────────────────────────────────────────────────────────
+function processData(rows) {
+  const deposits  = rows.filter(r => r['Type'] === 'Money Movement');
+  const tradeRows = rows.filter(r => r['Type'] === 'Trade');
+  const expiries  = rows.filter(r => r['Type'] === 'Receive Deliver' && r['Sub Type'] === 'Expiration');
+
+  const orderMap = {};
+  tradeRows.forEach(r => {
+    const oid = r['Order #'] || r['Order Number'] || '';
+    if (!oid) return;
+    if (!orderMap[oid]) orderMap[oid] = [];
+    orderMap[oid].push(r);
+  });
+
+  const symToOpenOrder = {};
+  Object.entries(orderMap).forEach(([oid, legs]) => {
+    if (legs.some(l => l['Action'].includes('OPEN')))
+      legs.forEach(l => { symToOpenOrder[l['Symbol']] = oid; });
+  });
+
+  const openToCloseOrders = {};
+  const openToExpiries    = {};
+
+  Object.entries(orderMap).forEach(([oid, legs]) => {
+    if (legs.every(l => l['Action'].includes('CLOSE'))) {
+      legs.forEach(l => {
+        const parent = symToOpenOrder[l['Symbol']];
+        if (!parent) return;
+        if (!openToCloseOrders[parent]) openToCloseOrders[parent] = [];
+        if (!openToCloseOrders[parent].includes(oid)) openToCloseOrders[parent].push(oid);
+      });
+    }
+  });
+  expiries.forEach(exp => {
+    const parent = symToOpenOrder[exp['Symbol']];
+    if (!parent) return;
+    if (!openToExpiries[parent]) openToExpiries[parent] = [];
+    openToExpiries[parent].push(exp);
+  });
+
+  const positions = [];
+  Object.entries(orderMap).forEach(([oid, legs]) => {
+    const openLegs = legs.filter(l => l['Action'].includes('OPEN'));
+    if (!openLegs.length) return;
+    const closeOids  = openToCloseOrders[oid] || [];
+    const expiryRows = openToExpiries[oid] || [];
+    const closeLegs  = closeOids.flatMap(cid => orderMap[cid] || []);
+    const isClosed   = closeLegs.length > 0 || expiryRows.length > 0;
+    const isExpired  = expiryRows.length > 0;
+    const sample     = openLegs[0];
+    const openDate   = openLegs.reduce((m, l) => l['Date'] < m ? l['Date'] : m, openLegs[0]['Date']);
+    const allClose   = [...closeLegs, ...expiryRows];
+    const closeDate  = allClose.length ? allClose.reduce((m, l) => l['Date'] < m ? l['Date'] : m, allClose[0]['Date']) : null;
+    const openTotal  = openLegs.reduce((s, l) => s + parseVal(l['Total']), 0);
+    const closeTotal = [...closeLegs, ...expiryRows].reduce((s, l) => s + parseVal(l['Total']), 0);
+    positions.push({ oid, ul: sample['Underlying Symbol'] || sample['Root Symbol'] || '—',
+      expDate: sample['Expiration Date'] || '—', openDate, closeDate,
+      isClosed, isExpired, openLegs, closeLegs, expiryRows,
+      openTotal, closeTotal, netPnl: openTotal + closeTotal });
+  });
+
+  positions.sort((a, b) => {
+    if (a.isClosed !== b.isClosed) return a.isClosed ? 1 : -1;
+    const da = a.isClosed ? a.closeDate : a.openDate;
+    const db = b.isClosed ? b.closeDate : b.openDate;
+    return da > db ? -1 : da < db ? 1 : 0;
+  });
+
+  const totalDeposits = deposits.filter(r => r['Sub Type'] === 'Deposit').reduce((s, r) => s + parseVal(r['Total']), 0);
+  const totalInterest = deposits.filter(r => r['Sub Type'] === 'Credit Interest').reduce((s, r) => s + parseVal(r['Total']), 0);
+  const totalAdj      = deposits.filter(r => r['Sub Type'] === 'Balance Adjustment').reduce((s, r) => s + parseVal(r['Total']), 0);
+  const tradePnl      = tradeRows.reduce((s, r) => s + parseVal(r['Value']) + parseVal(r['Commissions']) - Math.abs(parseVal(r['Fees'])), 0);
+  const balance       = totalDeposits + totalInterest + totalAdj + tradePnl;
+
+  return { deposits, tradeRows, expiries, positions, balance, totalDeposits };
+}
+
+// ── Show dashboard ─────────────────────────────────────────────────────────
+function showDashboard() {
+  el('uploadZone').hidden = true;
+  el('dashboard').hidden  = false;
+  renderMetrics();
+  renderTabs();
+  renderTabContent();
+}
+
+// ── Metrics ────────────────────────────────────────────────────────────────
+function renderMetrics() {
+  const { positions, balance, totalDeposits } = processed;
+  const closed    = positions.filter(p => p.isClosed);
+  const open      = positions.filter(p => !p.isClosed);
+  const closedPnl = closed.reduce((s, p) => s + p.netPnl, 0);
+  const winners   = closed.filter(p => p.netPnl > 0).length;
+  const winRate   = closed.length ? Math.round(winners / closed.length * 100) : 0;
+  el('metricsRow').innerHTML = [
+    { label: 'Account Balance',  value: fmt(balance),       cls: balance   >= 0 ? 'pos' : 'neg' },
+    { label: 'Total Deposited',  value: fmt(totalDeposits), cls: '' },
+    { label: 'Closed P&L',      value: fmt(closedPnl),     cls: closedPnl >= 0 ? 'pos' : 'neg' },
+    { label: 'Open Positions',   value: open.length,        cls: '' },
+    { label: 'Closed Positions', value: closed.length,      cls: '' },
+    { label: 'Win Rate',         value: winRate + '%',      cls: winRate >= 50 ? 'pos' : 'neg' },
+  ].map(m => `<div class="metric"><div class="label">${m.label}</div><div class="value ${m.cls}">${m.value}</div></div>`).join('');
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────
+function renderTabs() {
+  el('tabBar').innerHTML = TABS.map((t, i) =>
+    `<button class="tab ${i === activeTab ? 'active' : ''}" role="tab" aria-selected="${i === activeTab}" onclick="switchTab(${i})">
+       <i class="ti ${t.icon}" aria-hidden="true"></i>${t.label}
+     </button>`
+  ).join('');
+}
+function switchTab(i) { activeTab = i; renderTabs(); renderTabContent(); }
+window.switchTab = switchTab;
+function renderTabContent() {
+  [renderSummary, renderDeposits, renderTrades, renderAll][activeTab](el('tabContent'));
+}
+
+// ── Pagination ─────────────────────────────────────────────────────────────
+const PAGE_SIZE = 20;
+window.changePage = function(key, dir) { pages[key] = (pages[key] || 1) + dir; renderTabContent(); };
+
+function paginate(key, rows, renderRow, headers) {
+  if (!pages[key]) pages[key] = 1;
+  const total      = rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (pages[key] > totalPages) pages[key] = totalPages;
+  const slice = rows.slice((pages[key] - 1) * PAGE_SIZE, pages[key] * PAGE_SIZE);
+  const thead = headers.map(h => `<th${h.w ? ` style="width:${h.w}"` : ''}>${h.label}</th>`).join('');
+  const tbody = slice.length
+    ? slice.map(renderRow).join('')
+    : `<tr><td colspan="${headers.length}" class="empty">No records found</td></tr>`;
+  const pg = `<div class="pg">
+    <span>${total} record${total !== 1 ? 's' : ''}</span>
+    ${pages[key] > 1 ? `<button onclick="changePage('${key}',-1)">← Prev</button>` : ''}
+    <span>Page ${pages[key]} / ${totalPages}</span>
+    ${pages[key] < totalPages ? `<button onclick="changePage('${key}',1)">Next →</button>` : ''}
+  </div>`;
+  return `<div class="tbl-wrap"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>${pg}`;
+}
+
+// ── Summary tab ────────────────────────────────────────────────────────────
+function renderSummary(container) {
+  const { positions } = processed;
+  const closed = positions.filter(p => p.isClosed);
+  const sorted = [...closed].sort((a, b) => b.netPnl - a.netPnl);
+  const monthPnl = {};
+  processed.tradeRows.forEach(r => {
+    const d = new Date(r['Date']);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    monthPnl[key] = (monthPnl[key] || 0) + parseVal(r['Value']) + parseVal(r['Commissions']) - Math.abs(parseVal(r['Fees']));
+  });
+  const months = Object.keys(monthPnl).sort();
+  const symList = items => items.map(p => `
+    <div class="sym-row">
+      <span class="sym-name mono">${p.ul} ${p.expDate}</span>
+      <span class="sym-val ${p.netPnl >= 0 ? 'pos' : 'neg'}">${fmt(p.netPnl)}</span>
+    </div>`).join('');
+
+  container.innerHTML = `
+    <div class="summary-grid">
+      <div class="summary-card"><h3>Top 5 winners</h3>${symList(sorted.slice(0,5))}</div>
+      <div class="summary-card"><h3>Top 5 losers</h3>${symList(sorted.slice(-5).reverse())}</div>
+    </div>
+    <div class="chart-card">
+      <h3>Monthly P&L</h3>
+      <div style="position:relative;height:${Math.max(180, months.length*26)}px">
+        <canvas id="monthChart" role="img" aria-label="Monthly P&L bar chart">Monthly P&L for ${months.length} months.</canvas>
+      </div>
+    </div>`;
+
+  requestAnimationFrame(() => {
+    const canvas = el('monthChart');
+    if (!canvas || !window.Chart) return;
+    const vals = months.map(m => +monthPnl[m].toFixed(2));
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: months.map(m => { const [y,mo] = m.split('-'); return new Date(y,mo-1).toLocaleString('en-US',{month:'short',year:'2-digit'}); }),
+        datasets: [{ label: 'P&L', data: vals, backgroundColor: vals.map(v => v >= 0 ? 'rgba(29,158,117,0.75)' : 'rgba(216,90,48,0.75)'), borderRadius: 3, borderSkipped: false }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { font:{size:11}, color: isDark?'#a0a09b':'#6b6b67', autoSkip:false, maxRotation:45 }, grid:{color: isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.07)'} },
+          y: { ticks: { font:{size:11}, color: isDark?'#a0a09b':'#6b6b67', callback: v => (v<0?'-':'')+'$'+Math.abs(v).toLocaleString() }, grid:{color: isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.07)'} }
+        }
+      }
+    });
+  });
+}
+
+// ── Deposits tab ───────────────────────────────────────────────────────────
+function fmtSgd(n) {
+  if (!n) return '—';
+  return 'S$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderDeposits(container) {
+  const { deposits } = processed;
+  const depRows = deposits.filter(r => r['Sub Type'] === 'Deposit').sort((a,b) => new Date(b['Date'])-new Date(a['Date']));
+  const intRows = deposits.filter(r => r['Sub Type'] === 'Credit Interest').sort((a,b) => new Date(b['Date'])-new Date(a['Date']));
+  const adjRows = deposits.filter(r => r['Sub Type'] === 'Balance Adjustment').sort((a,b) => new Date(b['Date'])-new Date(a['Date']));
+  const totalDep = depRows.reduce((s,r) => s+parseVal(r['Total']),0);
+  const totalInt = intRows.reduce((s,r) => s+parseVal(r['Total']),0);
+  const totalAdj = adjRows.reduce((s,r) => s+parseVal(r['Total']),0);
+
+  // Build a lookup: rowHash -> sgd amount from sgdData
+  const sgdMap = {};
+  sgdData.forEach(e => { if (e.rowHash) sgdMap[e.rowHash] = e.sgd; });
+  const totalSgd = Object.values(sgdMap).reduce((s,v) => s+(v||0), 0);
+
+  // Deposit table — each row has an inline SGD input
+  const depTableRows = depRows.map(r => {
+    const t    = parseVal(r['Total']);
+    const hash = rowHash(r);
+    const sgdVal = sgdMap[hash] || '';
+    return `<tr>
+      <td>${fmtDate(r['Date'])}</td>
+      <td><span class="badge open">Deposit</span></td>
+      <td>${r['Description']}</td>
+      <td class="pos">${fmt(t)}</td>
+      <td class="sgd-cell">
+        ${sgdVal
+          ? `<span class="sgd-set" onclick="openSgdInput('${hash}')" title="Click to edit">${fmtSgd(sgdVal)}</span>`
+          : `<button class="sgd-add-btn" onclick="openSgdInput('${hash}')">+ SGD</button>`
+        }
+        <span class="sgd-input-wrap" id="sgd-wrap-${hash}" style="display:none">
+          <input type="number" class="sgd-inline-input" id="sgd-input-${hash}"
+            placeholder="SGD amount" min="0" step="0.01"
+            value="${sgdVal}"
+            onkeydown="if(event.key==='Enter')saveSgdInline('${hash}');if(event.key==='Escape')closeSgdInput('${hash}')">
+          <button class="sgd-save-btn" onclick="saveSgdInline('${hash}')">Save</button>
+          <button class="sgd-cancel-btn" onclick="closeSgdInput('${hash}')">✕</button>
+        </span>
+      </td>
+    </tr>`;
+  }).join('');
+
+  const badge  = r => r['Sub Type']==='Credit Interest'?'trade':'closed';
+  const hdrs2  = [{label:'Date',w:'90px'},{label:'Type',w:'130px'},{label:'Description'},{label:'Amount',w:'90px'}];
+  const tblRow2 = r => { const t=parseVal(r['Total']); return `<tr><td>${fmtDate(r['Date'])}</td><td><span class="badge ${badge(r)}">${r['Sub Type']}</span></td><td>${r['Description']}</td><td class="${t>=0?'pos':'neg'}">${fmt(t)}</td></tr>`; };
+
+  container.innerHTML = `
+    <div class="section-metrics">
+      <div class="metric"><div class="label">Total deposited (USD)</div><div class="value pos">${fmt(totalDep)}</div></div>
+      <div class="metric"><div class="label">Total deposited (SGD)</div><div class="value pos">${totalSgd ? fmtSgd(totalSgd) : '—'}</div></div>
+      <div class="metric"><div class="label">Interest earned</div><div class="value pos">${fmt(totalInt)}</div></div>
+      <div class="metric"><div class="label">Balance adjustments</div><div class="value ${totalAdj>=0?'pos':'neg'}">${fmt(totalAdj)}</div></div>
+    </div>
+
+    <div class="dep-section">
+      <div class="dep-section-header"><i class="ti ti-building-bank" aria-hidden="true"></i> Deposits <span class="dep-count">${depRows.length}</span></div>
+      <div id="sgd-status-bar" style="display:none;font-size:12px;padding:5px 0;color:var(--text-secondary)"></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:90px">Date</th>
+            <th style="width:90px">Type</th>
+            <th>Description</th>
+            <th style="width:90px">USD Amount</th>
+            <th style="width:160px">SGD Amount</th>
+          </tr></thead>
+          <tbody>${depTableRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="dep-section"><div class="dep-section-header"><i class="ti ti-coin" aria-hidden="true"></i> Credit interest <span class="dep-count">${intRows.length}</span></div>${paginate('int',intRows,tblRow2,hdrs2)}</div>
+    <div class="dep-section"><div class="dep-section-header"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Balance adjustments <span class="dep-count">${adjRows.length}</span></div>${paginate('adj',adjRows,tblRow2,hdrs2)}</div>`;
+}
+
+window.openSgdInput = function(hash) {
+  const wrap = el(`sgd-wrap-${hash}`);
+  if (!wrap) return;
+  wrap.style.display = 'inline-flex';
+  const input = el(`sgd-input-${hash}`);
+  if (input) { input.focus(); input.select(); }
+  // Hide the badge/button while editing
+  const cell = wrap.parentElement;
+  const set  = cell.querySelector('.sgd-set');
+  const btn  = cell.querySelector('.sgd-add-btn');
+  if (set) set.style.display = 'none';
+  if (btn) btn.style.display = 'none';
+};
+
+window.closeSgdInput = function(hash) {
+  const wrap = el(`sgd-wrap-${hash}`);
+  if (wrap) wrap.style.display = 'none';
+  // Restore the badge/button
+  const cell = wrap?.parentElement;
+  const set  = cell?.querySelector('.sgd-set');
+  const btn  = cell?.querySelector('.sgd-add-btn');
+  if (set) set.style.display = '';
+  if (btn) btn.style.display = '';
+};
+
+window.saveSgdInline = async function(hash) {
+  const input = el(`sgd-input-${hash}`);
+  const sgd   = parseFloat(input?.value);
+  const sbar  = el('sgd-status-bar');
+
+  if (!input || isNaN(sgd) || sgd <= 0) {
+    if (sbar) { sbar.textContent = 'Please enter a valid SGD amount.'; sbar.style.display = 'block'; }
+    return;
+  }
+  if (!ghToken) { showTokenModal(() => saveSgdInline(hash)); return; }
+
+  if (sbar) { sbar.textContent = 'Saving…'; sbar.style.display = 'block'; }
+
+  // Upsert entry by rowHash
+  const existing = sgdData.filter(e => e.rowHash !== hash);
+  const updated  = [...existing, { rowHash: hash, sgd, updatedAt: new Date().toISOString() }];
+
+  try {
+    await ghPutSgd(updated);
+    if (sbar) { sbar.textContent = '✓ Saved!'; setTimeout(() => { sbar.style.display='none'; }, 2500); }
+    renderDeposits(el('tabContent'));
+  } catch(e) {
+    if (sbar) { sbar.textContent = `Error: ${e.message}`; sbar.style.display = 'block'; }
+  }
+};
+
+// ── Trades tab ─────────────────────────────────────────────────────────────
+function renderTrades(container) {
+  const { positions } = processed;
+  const open=positions.filter(p=>!p.isClosed), closed=positions.filter(p=>p.isClosed);
+  const closedPnl=closed.reduce((s,p)=>s+p.netPnl,0), winners=closed.filter(p=>p.netPnl>0).length;
+  container.innerHTML = `
+    <div class="section-metrics">
+      <div class="metric"><div class="label">Closed P&L</div><div class="value ${closedPnl>=0?'pos':'neg'}">${fmt(closedPnl)}</div></div>
+      <div class="metric"><div class="label">Open</div><div class="value">${open.length}</div></div>
+      <div class="metric"><div class="label">Closed</div><div class="value">${closed.length}</div></div>
+      <div class="metric"><div class="label">Winners / Losers</div><div class="value">${winners} / ${closed.length-winners}</div></div>
+    </div>
+    <div class="search-row">
+      <input id="tradeSearch" placeholder="Search underlying, symbol…" oninput="filterTrades(this.value)">
+      <select id="tradeFilter" onchange="filterTrades(document.getElementById('tradeSearch').value)">
+        <option value="all">All positions</option>
+        <option value="open">Open only</option>
+        <option value="closed">Closed only</option>
+      </select>
+    </div>
+    <div id="tradesTable">${buildTradesTable(positions,'','all')}</div>`;
+}
+
+window.filterTrades = function(q) {
+  const filter = el('tradeFilter')?.value || 'all';
+  pages['trades'] = 1;
+  el('tradesTable').innerHTML = buildTradesTable(processed.positions, q||'', filter);
+};
+
+function legsHtml(legs) {
+  if (!legs.length) return '<span style="color:var(--text-tertiary);font-size:11px">—</span>';
+  return legs.map(l => {
+    const isSell=(l['Action']||'').startsWith('SELL');
+    const cp=l['Call or Put'], strike=l['Strike Price']?parseFloat(l['Strike Price']).toFixed(0):'';
+    const qty=l['Quantity']||'', total=parseVal(l['Total']);
+    const rawAvg=l['Average Price']&&l['Average Price']!=='--'?l['Average Price']:'';
+    const avgPx=rawAvg?parseFloat(rawAvg).toFixed(4):'';
+    return `<div class="leg-row">
+      <span class="leg-action ${isSell?'leg-sell':'leg-buy'}">${isSell?'S':'B'}</span>
+      <span class="leg-detail">
+        <span class="mono leg-sym">${l['Symbol']||'—'}</span>
+        <span class="leg-meta">${cp?cp[0]:''} ${strike?'@ '+strike:''} × ${qty}${avgPx?' · avg '+avgPx:''}</span>
+        <span class="leg-nums">
+          <span class="${total>=0?'pos':'neg'}">${fmt(total)}</span>
+          <span class="leg-cf">comm ${fmt(parseVal(l['Commissions']))} · fees ${fmt(-Math.abs(parseVal(l['Fees'])))}</span>
+        </span>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+window.toggleTrade = function(id) {
+  const card = document.getElementById(id);
+  if (!card) return;
+  card.classList.toggle('expanded');
+  card.classList.toggle('collapsed');
+};
+
+function buildTradesTable(positions, q, filter) {
+  let rows = positions;
+  if (filter==='open')   rows=rows.filter(p=>!p.isClosed);
+  if (filter==='closed') rows=rows.filter(p=>p.isClosed);
+  if (q) { const ql=q.toLowerCase(); rows=rows.filter(p=>p.ul.toLowerCase().includes(ql)||p.expDate.toLowerCase().includes(ql)||p.openLegs.some(l=>l['Symbol'].toLowerCase().includes(ql))); }
+  if (!rows.length) return '<div class="empty">No positions found</div>';
+  if (!pages['trades']) pages['trades']=1;
+  const total=rows.length, totalPages=Math.max(1,Math.ceil(total/PAGE_SIZE));
+  if (pages['trades']>totalPages) pages['trades']=totalPages;
+  const slice=rows.slice((pages['trades']-1)*PAGE_SIZE,pages['trades']*PAGE_SIZE);
+  const rowsHtml=slice.map((p,idx)=>{
+    const statusBadge=p.isClosed?`<span class="badge ${p.isExpired?'expired':'closed'}">${p.isExpired?'Expired':'Closed'}</span>`:`<span class="badge open">Open</span>`;
+    const pnlVal=p.isClosed?p.netPnl:p.openTotal;
+    const cardId=`trade-${pages['trades']||1}-${idx}`;
+    // Open positions expanded by default, closed collapsed by default
+    const startOpen=!p.isClosed;
+    return `<div class="trade-row ${p.isClosed?'trade-closed':'trade-open'} ${startOpen?'expanded':'collapsed'}" id="${cardId}">
+      <div class="trade-header" onclick="toggleTrade('${cardId}')" style="cursor:pointer">
+        <div class="trade-header-left"><span class="trade-ul">${p.ul}</span><span class="trade-exp">exp ${p.expDate}</span>${statusBadge}</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="trade-pnl"><span class="pnl-label">${p.isClosed?'Net P&L':'Open P&L'}</span><span class="pnl-value ${pnlVal>=0?'pos':'neg'}">${fmt(pnlVal)}</span></div>
+          <i class="ti ti-chevron-down trade-chevron" aria-hidden="true"></i>
+        </div>
+      </div>
+      <div class="trade-body">
+        <div class="trade-side">
+          <div class="side-label"><i class="ti ti-lock-open" aria-hidden="true"></i> Opened ${fmtDate(p.openDate)}</div>
+          <div class="legs">${legsHtml(p.openLegs)}</div>
+          <div class="side-total">Total <span class="${p.openTotal>=0?'pos':'neg'}">${fmt(p.openTotal)}</span></div>
+        </div>
+        <div class="trade-divider" aria-hidden="true"><div class="divider-line"></div><i class="ti ti-arrow-right"></i><div class="divider-line"></div></div>
+        <div class="trade-side">
+          <div class="side-label"><i class="ti ti-lock" aria-hidden="true"></i> ${p.isClosed?'Closed '+fmtDate(p.closeDate):'Not yet closed'}</div>
+          ${p.isClosed?`<div class="legs">${legsHtml([...p.closeLegs,...p.expiryRows])}</div><div class="side-total">Total <span class="${p.closeTotal>=0?'pos':'neg'}">${fmt(p.closeTotal)}</span></div>`:`<div class="legs open-placeholder"><span class="placeholder-text">Position still open</span></div>`}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  const pg=`<div class="pg"><span>${total} position${total!==1?'s':''}</span>${pages['trades']>1?`<button onclick="changePage('trades',-1)">← Prev</button>`:''}<span>Page ${pages['trades']} / ${totalPages}</span>${pages['trades']<totalPages?`<button onclick="changePage('trades',1)">Next →</button>`:''}</div>`;
+  return `<div class="trades-list">${rowsHtml}</div>${pg}`;
+}
+
+// ── All Ledger tab ─────────────────────────────────────────────────────────
+function renderAll(container) {
+  container.innerHTML = `
+    <div class="search-row">
+      <input id="allSearch" placeholder="Search anything…" oninput="filterAll()" style="max-width:260px">
+      <select id="allType" onchange="filterAll()">
+        <option value="">All types</option><option>Trade</option><option>Money Movement</option><option>Receive Deliver</option>
+      </select>
+    </div>
+    <div id="allTable">${buildAllTable('','')}</div>`;
+}
+window.filterAll = function() {
+  const q=(el('allSearch')?.value||'').trim(), type=el('allType')?.value||'';
+  pages['all']=1; el('allTable').innerHTML=buildAllTable(q,type);
+};
+function buildAllTable(q, typeFilter) {
+  let rows=[...allData].sort((a,b)=>new Date(b['Date'])-new Date(a['Date']));
+  if (typeFilter) rows=rows.filter(r=>r['Type']===typeFilter);
+  if (q) rows=rows.filter(r=>JSON.stringify(r).toLowerCase().includes(q.toLowerCase()));
+  const tb=r=>r['Type']==='Trade'?'trade':r['Type']==='Money Movement'?'money':'deliver';
+  return paginate('all',rows,r=>{const t=parseVal(r['Total']);return`<tr><td>${fmtDate(r['Date'])}</td><td><span class="badge ${tb(r)}">${r['Type']}</span></td><td style="font-size:11px">${r['Sub Type']||'—'}</td><td class="mono">${r['Symbol']||'—'}</td><td style="font-size:11.5px;color:var(--text-secondary)">${r['Description']||'—'}</td><td class="neg">${r['Commissions']&&r['Commissions']!=='--'?fmt(parseVal(r['Commissions'])):'—'}</td><td class="neg">${r['Fees']?fmt(-Math.abs(parseVal(r['Fees']))):'—'}</td><td class="${t>=0?'pos':'neg'}">${fmt(t)}</td></tr>`;},
+    [{label:'Date',w:'82px'},{label:'Type',w:'90px'},{label:'Sub type',w:'90px'},{label:'Symbol'},{label:'Description',w:'170px'},{label:'Comm',w:'55px'},{label:'Fees',w:'45px'},{label:'Total',w:'80px'}]);
+}
+
+// ── File handlers ──────────────────────────────────────────────────────────
+function attachFileHandlers() {
+  const fileInput=el('fileInput'), zone=el('uploadZone');
+  fileInput.addEventListener('change', e => {
+    const file=e.target.files[0]; if (!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>mergeAndCommit(ev.target.result);
+    reader.readAsText(file); e.target.value='';
+  });
+  zone.addEventListener('click',    ()=>fileInput.click());
+  zone.addEventListener('keydown',  e=>{if(e.key==='Enter'||e.key===' ')fileInput.click();});
+  zone.addEventListener('dragover', e=>{e.preventDefault();zone.classList.add('drag-over');});
+  zone.addEventListener('dragleave',()=>zone.classList.remove('drag-over'));
+  zone.addEventListener('drop',e=>{
+    e.preventDefault();zone.classList.remove('drag-over');
+    const file=e.dataTransfer.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>mergeAndCommit(ev.target.result);
+    reader.readAsText(file);
+  });
+
+  // Settings button
+  el('settingsBtn').addEventListener('click', () => {
+    if (!el('tokenPanel').hidden) {
+      hideTokenPanel();
+    } else {
+      showTokenModal(() => loadFromGitHub());
+    }
+  });
+
+  // Token panel buttons — wired once at startup, no dynamic cloning needed
+  el('tokenSaveBtn').addEventListener('click', doTokenSave);
+  el('tokenCancelBtn').addEventListener('click', hideTokenPanel);
+  el('tokenInput').addEventListener('keydown', e => { if (e.key === 'Enter') doTokenSave(); });
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  attachFileHandlers();
+  loadFromGitHub();
+});

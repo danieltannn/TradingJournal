@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Trade Tracker">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <title>Trade Tracker</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+
+    <header class="header">
+      <div class="header-left">
+        <i class="ti ti-chart-line" aria-hidden="true"></i>
+        <h1>Trade Tracker</h1>
+      </div>
+      <div class="header-right">
+        <button id="settingsBtn" class="icon-btn" aria-label="GitHub settings">
+          <i class="ti ti-settings" aria-hidden="true"></i>
+        </button>
+        <label class="upload-btn" aria-label="Upload CSV file">
+          <input type="file" accept=".csv" id="fileInput">
+          <i class="ti ti-upload" aria-hidden="true"></i>
+          <span>Upload CSV</span>
+        </label>
+      </div>
+    </header>
+
+    <div id="statusBar" class="status-bar" hidden></div>
+
+    <!-- Token panel — shown inline, not as a fixed overlay -->
+    <div id="tokenPanel" class="token-panel" hidden>
+      <div class="token-panel-inner">
+        <div class="token-panel-header">
+          <div style="display:flex;align-items:center;gap:8px">
+            <i class="ti ti-brand-github" aria-hidden="true" style="font-size:20px;color:var(--text-secondary)"></i>
+            <strong>GitHub token</strong>
+          </div>
+          <button id="tokenCancelBtn" class="icon-btn" aria-label="Close" style="width:28px;height:28px;font-size:16px">
+            <i class="ti ti-x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <p class="token-desc">A Personal Access Token lets the app save your data directly to your GitHub repo. Stored only in this browser.</p>
+        <ol class="token-steps">
+          <li>Go to <strong>github.com → Settings → Developer settings → Personal access tokens → Tokens (classic)</strong></li>
+          <li>Click <strong>Generate new token (classic)</strong></li>
+          <li>Give it a name, tick the <strong>repo</strong> scope, click Generate</li>
+          <li>Copy and paste it below</li>
+        </ol>
+        <input id="tokenInput" type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+        <button id="tokenSaveBtn" class="btn-primary" style="width:100%">Save token</button>
+      </div>
+    </div>
+
+    <main>
+      <div id="uploadZone" class="upload-zone" role="button" tabindex="0" aria-label="Drop CSV file here or click to upload" hidden>
+        <i class="ti ti-file-spreadsheet" aria-hidden="true"></i>
+        <p class="upload-title">Drop your TastyTrade CSV here</p>
+        <p class="upload-sub">or use the upload button above</p>
+        <p class="upload-hint">Data is saved permanently to your GitHub repo</p>
+      </div>
+
+      <div id="dashboard" hidden>
+        <div class="metrics" id="metricsRow"></div>
+        <nav class="tabs" id="tabBar" role="tablist" aria-label="Dashboard sections"></nav>
+        <div id="tabContent" role="tabpanel"></div>
+      </div>
+    </main>
+
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
