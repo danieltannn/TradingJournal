@@ -1,0 +1,25 @@
+{
+  "name": "Trade Tracker",
+  "short_name": "Trade Tracker",
+  "description": "TastyTrade portfolio tracker — deposits, open and closed positions, P&L",
+  "start_url": "/TradingJournal/",
+  "scope": "/TradingJournal/",
+  "display": "standalone",
+  "background_color": "#1c1c1a",
+  "theme_color": "#1c1c1a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
