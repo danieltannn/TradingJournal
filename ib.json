@@ -4264,5 +4264,15 @@
       "rate": 1.29115,
       "comm": -2
     }
+  ],
+  "corporateActions": [
+    {
+      "symbol": "VGT",
+      "date": "2026-04-21",
+      "type": "split",
+      "ratio": "8:1",
+      "sharesAdded": 296.0279,
+      "desc": "VGT(US92204A7028) Split 8 for 1 (VGT, VANGUARD INFO TECH ETF, US92204A7028)"
+    }
   ]
 }
