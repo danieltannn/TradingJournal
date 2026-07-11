@@ -1371,46 +1371,46 @@
   ],
   "openPositions": {
     "DGRO": {
-      "qty": 162.966,
-      "closePrice": 77.06,
-      "mktValue": 12558.16,
-      "unrealPL": 2035.218727
+      "qty": 154.9732,
+      "closePrice": 73.61,
+      "mktValue": 11407.58,
+      "unrealPL": 1464.43467
     },
     "FBTC": {
-      "qty": 14.3326,
-      "closePrice": 55.615,
-      "mktValue": 797.11,
-      "unrealPL": -168.91842
+      "qty": 6.3407,
+      "closePrice": 58.46,
+      "mktValue": 370.68,
+      "unrealPL": -94.458684
     },
     "QQQM": {
-      "qty": 127.9875,
-      "closePrice": 298.72,
-      "mktValue": 38232.43,
-      "unrealPL": 9846.547722
+      "qty": 118.0939,
+      "closePrice": 248.51,
+      "mktValue": 29347.52,
+      "unrealPL": 3574.075989
     },
     "SCHD": {
-      "qty": 411.973,
-      "closePrice": 32.4,
-      "mktValue": 13347.93,
-      "unrealPL": 1688.756371
+      "qty": 374.9942,
+      "closePrice": 31.57,
+      "mktValue": 11838.57,
+      "unrealPL": 1339.440853
     },
     "SMH": {
-      "qty": 21.0059,
-      "closePrice": 611.03,
-      "mktValue": 12835.24,
-      "unrealPL": 4543.688268
+      "qty": 19.9312,
+      "closePrice": 410.2,
+      "mktValue": 8175.78,
+      "unrealPL": 3018.130511
     },
     "SPYL": {
-      "qty": 1874.9078,
-      "closePrice": 18.676,
-      "mktValue": 35015.78,
-      "unrealPL": 6748.983374
+      "qty": 1726.6803,
+      "closePrice": 16.914,
+      "mktValue": 29205.07,
+      "unrealPL": 3498.745937
     },
     "VGT": {
-      "qty": 352.2065,
-      "closePrice": 118.08,
-      "mktValue": 41588.54,
-      "unrealPL": 13210.539095
+      "qty": 40.7544,
+      "closePrice": 734.65,
+      "mktValue": 29940.22,
+      "unrealPL": 4171.264606
     }
   },
   "dividends": [
