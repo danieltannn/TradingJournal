@@ -805,3 +805,27 @@ tr:hover td { background: var(--bg-secondary); }
   gap: 8px;
   margin-bottom: 12px;
 }
+
+/* ── SGD transaction collapsible ── */
+.sgd-txn-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.sgd-txn-toggle span { display: flex; align-items: center; gap: 6px; }
+.sgd-txn-toggle .ti-chevron-down { font-size: 14px; transition: transform 0.2s; }
+.sgd-txn-toggle:hover { background: var(--bg-secondary); color: var(--text); }
+.sgd-txn-toggle.open { color: var(--text); }
+.sgd-txn-toggle.open .ti-chevron-down { transform: rotate(180deg); }
+
+.sgd-txn-body { display: none; }
+.sgd-txn-toggle.open + .sgd-txn-body { display: block; }
