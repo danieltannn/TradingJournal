@@ -922,42 +922,56 @@
   "openPositions": {
     "DGRO": {
       "qty": 154.9732,
+      "costPrice": 64.160418227,
+      "costBasis": 9943.145326,
       "closePrice": 73.61,
       "mktValue": 11407.58,
       "unrealPL": 1464.43467
     },
     "FBTC": {
       "qty": 6.3407,
+      "costPrice": 73.357623764,
+      "costBasis": 465.138685,
       "closePrice": 58.46,
       "mktValue": 370.68,
       "unrealPL": -94.458684
     },
     "QQQM": {
       "qty": 118.0939,
+      "costPrice": 218.245345543,
+      "costBasis": 25773.444012,
       "closePrice": 248.51,
       "mktValue": 29347.52,
       "unrealPL": 3574.075989
     },
     "SCHD": {
       "qty": 374.9942,
+      "costPrice": 27.99811076,
+      "costBasis": 10499.129146,
       "closePrice": 31.57,
       "mktValue": 11838.57,
       "unrealPL": 1339.440853
     },
     "SMH": {
       "qty": 19.9312,
+      "costPrice": 258.772652324,
+      "costBasis": 5157.649488,
       "closePrice": 410.2,
       "mktValue": 8175.78,
       "unrealPL": 3018.130511
     },
     "SPYL": {
       "qty": 1726.6803,
+      "costPrice": 14.88771492,
+      "costBasis": 25706.324064,
       "closePrice": 16.914,
       "mktValue": 29205.07,
       "unrealPL": 3498.745937
     },
     "VGT": {
       "qty": 40.7544,
+      "costPrice": 632.298730812,
+      "costBasis": 25768.955395,
       "closePrice": 734.65,
       "mktValue": 29940.22,
       "unrealPL": 4171.264606
@@ -3310,6 +3324,342 @@
       "comm": 0,
       "realPL": 0,
       "code": "A;O"
+    },
+    {
+      "symbol": "SPLG",
+      "dateRaw": "2025-04-08, 09:43:41",
+      "qty": -200,
+      "tPrice": 61.17,
+      "proceeds": 12234,
+      "comm": -1.22169348,
+      "realPL": -912.799662,
+      "code": "C;P"
+    },
+    {
+      "symbol": "SPY",
+      "dateRaw": "2025-04-04, 09:30:02",
+      "qty": -200,
+      "tPrice": 524.02,
+      "proceeds": 104804,
+      "comm": -3.67794961,
+      "realPL": -7353.60659,
+      "code": "C"
+    }
+  ],
+  "sgdDeposits": [
+    {
+      "dateRaw": "2025-02-19",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2000
+    },
+    {
+      "dateRaw": "2025-02-25",
+      "desc": "Electronic Fund Transfer",
+      "amount": 33021.12
+    },
+    {
+      "dateRaw": "2025-02-26",
+      "desc": "Electronic Fund Transfer",
+      "amount": 10029.08
+    },
+    {
+      "dateRaw": "2025-02-27",
+      "desc": "Electronic Fund Transfer",
+      "amount": 74823.07
+    },
+    {
+      "dateRaw": "2025-03-07",
+      "desc": "Electronic Fund Transfer",
+      "amount": 3500
+    },
+    {
+      "dateRaw": "2025-03-27",
+      "desc": "Electronic Fund Transfer",
+      "amount": 4000
+    },
+    {
+      "dateRaw": "2025-04-09",
+      "desc": "Electronic Fund Transfer",
+      "amount": 3500
+    },
+    {
+      "dateRaw": "2025-06-09",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2500
+    },
+    {
+      "dateRaw": "2025-07-09",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2500
+    },
+    {
+      "dateRaw": "2025-08-11",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2500
+    },
+    {
+      "dateRaw": "2025-09-09",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2500
+    },
+    {
+      "dateRaw": "2025-09-11",
+      "desc": "Disbursement Initiated by TAN ZHONGHAO DANIEL",
+      "amount": -12803
+    },
+    {
+      "dateRaw": "2025-09-16",
+      "desc": "Electronic Fund Transfer",
+      "amount": 10
+    },
+    {
+      "dateRaw": "2025-10-11",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2500
+    },
+    {
+      "dateRaw": "2025-11-08",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2500
+    },
+    {
+      "dateRaw": "2025-12-09",
+      "desc": "Electronic Fund Transfer",
+      "amount": 5000
+    },
+    {
+      "dateRaw": "2026-01-05",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2000
+    },
+    {
+      "dateRaw": "2026-01-12",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2500
+    },
+    {
+      "dateRaw": "2026-02-10",
+      "desc": "Electronic Fund Transfer",
+      "amount": 2500
+    }
+  ],
+  "forexTrades": [
+    {
+      "dateRaw": "2025-02-25, 08:30:19",
+      "usdAmt": 17202.89,
+      "sgdAmt": -23016.6066755,
+      "rate": 1.33795,
+      "comm": -2
+    },
+    {
+      "dateRaw": "2025-02-26, 07:55:49",
+      "usdAmt": 8965.98,
+      "sgdAmt": -12004.998921,
+      "rate": 1.33895,
+      "comm": -1.996053234
+    },
+    {
+      "dateRaw": "2025-02-26, 08:51:34",
+      "usdAmt": 7490.19,
+      "sgdAmt": -10025.9938245,
+      "rate": 1.33855,
+      "comm": -1.996053234
+    },
+    {
+      "dateRaw": "2025-02-27, 06:25:01",
+      "usdAmt": 55770.06,
+      "sgdAmt": -74819.9970948,
+      "rate": 1.34158,
+      "comm": -1.985586614
+    },
+    {
+      "dateRaw": "2025-03-07, 10:21:29",
+      "usdAmt": 2632.13,
+      "sgdAmt": -3500.996113,
+      "rate": 1.3301,
+      "comm": -2.002788882
+    },
+    {
+      "dateRaw": "2025-03-27, 03:59:33",
+      "usdAmt": 2982.94,
+      "sgdAmt": -3996.990453,
+      "rate": 1.33995,
+      "comm": -2.00108316
+    },
+    {
+      "dateRaw": "2025-04-07, 18:01:38",
+      "usdAmt": 0.6713,
+      "sgdAmt": -0.908168205,
+      "rate": 1.35285,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-04-09, 10:49:24",
+      "usdAmt": 2598.36,
+      "sgdAmt": -3499.99092,
+      "rate": 1.347,
+      "comm": -2
+    },
+    {
+      "dateRaw": "2025-04-11, 18:02:29",
+      "usdAmt": 0.0069,
+      "sgdAmt": -0.009104205,
+      "rate": 1.31945,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-06-10, 10:30:13",
+      "usdAmt": 1937.79,
+      "sgdAmt": -2491.99794,
+      "rate": 1.286,
+      "comm": -1.999243556
+    },
+    {
+      "dateRaw": "2025-07-11, 11:30:25",
+      "usdAmt": 1947.42,
+      "sgdAmt": -2492.989713,
+      "rate": 1.28015,
+      "comm": -1.998579
+    },
+    {
+      "dateRaw": "2025-08-11, 08:31:00",
+      "usdAmt": 1938.21,
+      "sgdAmt": -2493.9917175,
+      "rate": 1.28675,
+      "comm": -1.997408768
+    },
+    {
+      "dateRaw": "2025-08-22, 18:02:51",
+      "usdAmt": -2.5043,
+      "sgdAmt": 3.208634375,
+      "rate": 1.28125,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-09-10, 09:52:27",
+      "usdAmt": 1947.79,
+      "sgdAmt": -2495.9954955,
+      "rate": 1.28145,
+      "comm": -2.000577912
+    },
+    {
+      "dateRaw": "2025-09-10, 10:09:27",
+      "usdAmt": -10000,
+      "sgdAmt": 12808.5,
+      "rate": 1.28085,
+      "comm": -2.000577912
+    },
+    {
+      "dateRaw": "2025-09-16, 11:15:01",
+      "usdAmt": 5.48,
+      "sgdAmt": -6.999878,
+      "rate": 1.27735,
+      "comm": -2.007442948
+    },
+    {
+      "dateRaw": "2025-09-16, 11:15:01",
+      "usdAmt": -0.96803684,
+      "sgdAmt": 1.236521851,
+      "rate": 1.27735,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-09-24, 18:02:14",
+      "usdAmt": 0.03707023,
+      "sgdAmt": -0.04777797,
+      "rate": 1.28885,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-10-02, 18:02:41",
+      "usdAmt": 0.10576389,
+      "sgdAmt": -0.136345516,
+      "rate": 1.28915,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-10-07, 18:02:51",
+      "usdAmt": -0.22,
+      "sgdAmt": 0.284515,
+      "rate": 1.29325,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-10-13, 09:42:20",
+      "usdAmt": 1921.16,
+      "sgdAmt": -2494.9912804,
+      "rate": 1.29869,
+      "comm": -1.99753564
+    },
+    {
+      "dateRaw": "2025-10-15, 18:02:27",
+      "usdAmt": -3.45611944,
+      "sgdAmt": 4.47964921,
+      "rate": 1.29615,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-11-07, 18:02:44",
+      "usdAmt": 0.26,
+      "sgdAmt": -0.338351,
+      "rate": 1.30135,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-11-10, 08:55:43",
+      "usdAmt": 1915.1,
+      "sgdAmt": -2494.99228,
+      "rate": 1.3028,
+      "comm": -1.99762563
+    },
+    {
+      "dateRaw": "2025-11-17, 18:03:07",
+      "usdAmt": -0.43344682,
+      "sgdAmt": 0.56493291,
+      "rate": 1.30335,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2025-12-16, 08:50:50",
+      "usdAmt": 3869.26,
+      "sgdAmt": -4989.991159,
+      "rate": 1.28965,
+      "comm": -2.000608434
+    },
+    {
+      "dateRaw": "2025-12-18, 18:02:01",
+      "usdAmt": 3.9161,
+      "sgdAmt": -5.052748025,
+      "rate": 1.29025,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2026-01-13, 06:35:55",
+      "usdAmt": 3495.68,
+      "sgdAmt": -4499.988864,
+      "rate": 1.2873,
+      "comm": -2
+    },
+    {
+      "dateRaw": "2026-01-15, 18:02:30",
+      "usdAmt": 0.0086,
+      "sgdAmt": -0.01107809,
+      "rate": 1.28815,
+      "comm": 0
+    },
+    {
+      "dateRaw": "2026-02-12, 22:44:54",
+      "usdAmt": 1979.17,
+      "sgdAmt": -2499.9885855,
+      "rate": 1.26315,
+      "comm": -2
+    },
+    {
+      "dateRaw": "2026-02-16, 18:02:13",
+      "usdAmt": 0.0091,
+      "sgdAmt": -0.011488295,
+      "rate": 1.26245,
+      "comm": 0
     }
   ]
 }
