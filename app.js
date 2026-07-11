@@ -6,6 +6,7 @@ const GH_REPO     = 'TradingJournal';
 const GH_BRANCH   = 'main';
 const GH_FILEPATH     = 'data.json';
 const GH_SGD_FILEPATH = 'sgd.json';
+const GH_IB_FILEPATH  = 'ib.json';
 
 // ── State ──────────────────────────────────────────────────────────────────
 let allData   = [];
@@ -16,12 +17,15 @@ let ghToken    = localStorage.getItem('gh_token') || '';
 let ghFileSha  = null; // needed by GitHub API to update an existing file
 let sgdData    = [];   // SGD deposit records
 let sgdFileSha = null; // SHA for sgd.json
+let ibData     = { trades: [], openPositions: {}, dividends: [] }; // IB investing data
+let ibFileSha  = null; // SHA for ib.json
 
 const TABS = [
   { label: 'Summary',    icon: 'ti-layout-dashboard' },
   { label: 'Deposits',   icon: 'ti-wallet' },
   { label: 'Trades',     icon: 'ti-arrows-exchange' },
-  { label: 'All Ledger', icon: 'ti-list' }
+  { label: 'All Ledger', icon: 'ti-list' },
+  { label: 'Investing',  icon: 'ti-trending-up' },
 ];
 
 // ── Utility ────────────────────────────────────────────────────────────────
@@ -155,6 +159,32 @@ async function ghPutSgd(sgdRows) {
   sgdData = sgdRows;
 }
 
+// ── IB GitHub file ────────────────────────────────────────────────────────
+async function ghGetIb() {
+  const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}?ref=${GH_BRANCH}`;
+  const res = await fetch(url, { headers: ghHeaders() });
+  if (res.status === 404) return { trades: [], openPositions: {}, dividends: [] };
+  if (!res.ok) return { trades: [], openPositions: {}, dividends: [] };
+  const data = await res.json();
+  ibFileSha = data.sha;
+  return JSON.parse(atob(data.content.replace(/\n/g, '')));
+}
+
+async function ghPutIb(ibPayload) {
+  const url  = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}`;
+  const body = {
+    message: `Update ib.json — ${new Date().toISOString().slice(0, 10)}`,
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(ibPayload, null, 2)))),
+    branch:  GH_BRANCH,
+  };
+  if (ibFileSha) body.sha = ibFileSha;
+  const res = await fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(`GitHub IB write error ${res.status}`);
+  const data = await res.json();
+  ibFileSha = data.content.sha;
+  ibData = ibPayload;
+}
+
 // ── CSV parser ─────────────────────────────────────────────────────────────
 function parseCSV(text) {
   const lines = text.trim().split('\n');
@@ -195,6 +225,10 @@ async function loadFromGitHub() {
             const sr = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/${GH_SGD_FILEPATH}?t=${Date.now()}`);
             if (sr.ok) sgdData = await sr.json();
           } catch(_) {}
+          try {
+            const ir = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/${GH_IB_FILEPATH}?t=${Date.now()}`);
+            if (ir.ok) ibData = await ir.json();
+          } catch(_) {}
           showDashboard(); setTimeout(hideStatus, 0); return;
         }
       }
@@ -212,6 +246,7 @@ async function loadFromGitHub() {
     if (json && Array.isArray(json) && json.length > 0) {
       allData = json; processed = processData(allData);
       sgdData = await ghGetSgd();
+      ibData  = await ghGetIb();
       showDashboard();
       setTimeout(hideStatus, 0);
     } else {
@@ -381,7 +416,7 @@ function renderTabs() {
 function switchTab(i) { activeTab = i; renderTabs(); renderTabContent(); }
 window.switchTab = switchTab;
 function renderTabContent() {
-  [renderSummary, renderDeposits, renderTrades, renderAll][activeTab](el('tabContent'));
+  [renderSummary, renderDeposits, renderTrades, renderAll, renderInvesting][activeTab](el('tabContent'));
 }
 
 // ── Pagination ─────────────────────────────────────────────────────────────
@@ -713,6 +748,336 @@ function buildAllTable(q, typeFilter) {
   const tb=r=>r['Type']==='Trade'?'trade':r['Type']==='Money Movement'?'money':'deliver';
   return paginate('all',rows,r=>{const t=parseVal(r['Total']);return`<tr><td>${fmtDate(r['Date'])}</td><td><span class="badge ${tb(r)}">${r['Type']}</span></td><td style="font-size:11px">${r['Sub Type']||'—'}</td><td class="mono">${r['Symbol']||'—'}</td><td style="font-size:11.5px;color:var(--text-secondary)">${r['Description']||'—'}</td><td class="neg">${r['Commissions']&&r['Commissions']!=='--'?fmt(parseVal(r['Commissions'])):'—'}</td><td class="neg">${r['Fees']?fmt(-Math.abs(parseVal(r['Fees']))):'—'}</td><td class="${t>=0?'pos':'neg'}">${fmt(t)}</td></tr>`;},
     [{label:'Date',w:'82px'},{label:'Type',w:'90px'},{label:'Sub type',w:'90px'},{label:'Symbol'},{label:'Description',w:'170px'},{label:'Comm',w:'55px'},{label:'Fees',w:'45px'},{label:'Total',w:'80px'}]);
+}
+
+// ── Investing tab ──────────────────────────────────────────────────────────
+function renderInvesting(container) {
+  const { trades, openPositions, dividends } = ibData;
+  const hasTrades = trades.length > 0;
+
+  const importHtml = `
+    <div class="dep-section">
+      <div class="dep-section-header">
+        <i class="ti ti-file-import" aria-hidden="true"></i>
+        IB Activity Statement
+        <span class="dep-count">${trades.length} trades loaded</span>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <label class="inv-import-btn">
+            <input type="file" accept=".csv" id="ibCsvInput" style="display:none">
+            <i class="ti ti-upload" aria-hidden="true"></i> Import CSV
+          </label>
+          ${hasTrades ? `<button class="inv-clear-btn" onclick="clearIbData()">Clear</button>` : ''}
+        </div>
+      </div>
+      <div id="ib-status" style="display:none;font-size:12px;padding:4px 0;color:var(--text-secondary)"></div>
+    </div>`;
+
+  if (!hasTrades) {
+    container.innerHTML = importHtml + `
+      <div class="upload-zone" style="margin:0;cursor:default">
+        <i class="ti ti-building-bank" aria-hidden="true"></i>
+        <p class="upload-title">No IB data yet</p>
+        <p class="upload-sub">Import your Interactive Brokers Activity Statement CSV above</p>
+        <p class="upload-hint">IB → Reports → Activity → Create Statement → Download CSV</p>
+      </div>`;
+    attachIbFileInput();
+    return;
+  }
+
+  // ── aggregate by symbol ──
+  const bySymbol = {};
+  for (const t of trades) {
+    if (!bySymbol[t.symbol]) bySymbol[t.symbol] = { buys: [], sells: [] };
+    if (t.qty > 0) bySymbol[t.symbol].buys.push(t);
+    else           bySymbol[t.symbol].sells.push(t);
+  }
+  const symbols = Object.keys(bySymbol);
+
+  // ── totals ──
+  let totalCost = 0, totalComm = 0, totalMktVal = 0, totalUnreal = 0;
+  for (const sym of symbols) {
+    totalCost  += bySymbol[sym].buys.reduce((s, t) => s + Math.abs(t.proceeds), 0);
+    totalComm  += trades.filter(t => t.symbol === sym).reduce((s, t) => s + Math.abs(t.comm), 0);
+    const pos   = openPositions[sym];
+    if (pos) { totalMktVal += pos.mktValue || 0; totalUnreal += pos.unrealPL || 0; }
+  }
+  const totalDiv = dividends.reduce((s, d) => s + d.amount, 0);
+
+  // ── monthly spend for chart ──
+  const monthly = {};
+  for (const t of trades) {
+    if (t.qty <= 0) continue;
+    const m = (t.dateRaw || '').slice(0, 7);
+    if (m) monthly[m] = (monthly[m] || 0) + Math.abs(t.proceeds);
+  }
+  const months = Object.keys(monthly).sort();
+
+  // ── per-symbol cards ──
+  const sortedSyms = [...symbols].sort((a, b) => {
+    const ca = bySymbol[a].buys.reduce((s, t) => s + Math.abs(t.proceeds), 0);
+    const cb = bySymbol[b].buys.reduce((s, t) => s + Math.abs(t.proceeds), 0);
+    return cb - ca;
+  });
+
+  const holdingCards = sortedSyms.map(sym => {
+    const { buys, sells } = bySymbol[sym];
+    const totalBuyCost = buys.reduce((s, t) => s + Math.abs(t.proceeds), 0);
+    const symComm      = trades.filter(t => t.symbol === sym).reduce((s, t) => s + Math.abs(t.comm), 0);
+    const netShares    = buys.reduce((s, t) => s + t.qty, 0) - sells.reduce((s, t) => s + Math.abs(t.qty), 0);
+    const avgCost      = netShares > 0 ? totalBuyCost / netShares : 0;
+    const pos          = openPositions[sym];
+    const lastPrice    = pos ? pos.closePrice : 0;
+    const mktValue     = pos ? pos.mktValue   : 0;
+    const unrealPL     = pos ? pos.unrealPL   : 0;
+    const pct          = totalBuyCost > 0 && unrealPL ? (unrealPL / totalBuyCost * 100).toFixed(1) : null;
+    const allTrades    = [...buys, ...sells].sort((a, b) => (a.dateRaw || '').localeCompare(b.dateRaw || ''));
+    const tradeRowsHtml = allTrades.map(t => `
+      <tr>
+        <td>${(t.dateRaw || '').slice(0, 10)}</td>
+        <td><span class="badge ${t.qty > 0 ? 'open' : 'closed'}">${t.qty > 0 ? 'BUY' : 'SELL'}</span></td>
+        <td class="mono">${Math.abs(t.qty).toFixed(4)}</td>
+        <td class="mono">$${t.tPrice.toFixed(4)}</td>
+        <td class="pos">$${Math.abs(t.proceeds).toFixed(2)}</td>
+        <td class="neg">$${Math.abs(t.comm).toFixed(2)}</td>
+        <td class="${t.realPL > 0 ? 'pos' : t.realPL < 0 ? 'neg' : ''}">
+          ${t.realPL !== 0 ? (t.realPL > 0 ? '+' : '') + fmt(t.realPL) : '—'}
+        </td>
+      </tr>`).join('');
+
+    return `
+      <div class="inv-sym-card" id="inv-sym-${sym}">
+        <div class="inv-sym-header" onclick="toggleInvSym('${sym}')">
+          <div class="inv-sym-left">
+            <span class="badge trade" style="font-size:12px;padding:3px 8px">${sym}</span>
+            <div class="inv-sym-meta">
+              <span>${netShares.toFixed(4)} shares</span>
+              <span class="inv-sep">·</span>
+              <span>avg $${avgCost.toFixed(2)}</span>
+              <span class="inv-sep">·</span>
+              <span>${buys.length + sells.length} trades</span>
+            </div>
+          </div>
+          <div class="inv-sym-right">
+            <div class="inv-stat">
+              <span class="inv-stat-label">Invested</span>
+              <span class="inv-stat-val pos">${fmt(totalBuyCost)}</span>
+            </div>
+            ${mktValue > 0 ? `<div class="inv-stat">
+              <span class="inv-stat-label">Mkt Val</span>
+              <span class="inv-stat-val">${fmt(mktValue)}</span>
+            </div>` : ''}
+            ${unrealPL !== 0 ? `<div class="inv-stat">
+              <span class="inv-stat-label">P&L</span>
+              <span class="inv-stat-val ${unrealPL >= 0 ? 'pos' : 'neg'}">${unrealPL > 0 ? '+' : ''}${fmt(unrealPL)}${pct ? ` (${pct}%)` : ''}</span>
+            </div>` : ''}
+            <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
+          </div>
+        </div>
+        <div class="inv-sym-body">
+          <div class="tbl-wrap" style="margin:10px 14px 14px">
+            <table>
+              <thead><tr>
+                <th>Date</th><th>Type</th><th>Qty</th><th>Price</th>
+                <th>Cost</th><th>Comm</th><th>Real P&L</th>
+              </tr></thead>
+              <tbody>${tradeRowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = importHtml + `
+    <div class="section-metrics">
+      <div class="metric"><div class="label">Total Invested</div><div class="value pos">${fmt(totalCost)}</div></div>
+      <div class="metric"><div class="label">Market Value</div><div class="value">${totalMktVal > 0 ? fmt(totalMktVal) : '—'}</div></div>
+      <div class="metric"><div class="label">Unrealised P&L</div>
+        <div class="value ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal !== 0 ? (totalUnreal > 0 ? '+' : '') + fmt(totalUnreal) : '—'}</div></div>
+      <div class="metric"><div class="label">Symbols</div><div class="value">${symbols.length}</div></div>
+      <div class="metric"><div class="label">Commissions</div><div class="value neg">${fmt(totalComm)}</div></div>
+      <div class="metric"><div class="label">Dividends</div><div class="value pos">${fmt(totalDiv)}</div></div>
+    </div>
+
+    <div class="chart-card">
+      <h3>Monthly Investment (USD)</h3>
+      <div style="position:relative;height:160px">
+        <canvas id="ibMonthChart" role="img" aria-label="Monthly investment bar chart"></canvas>
+      </div>
+    </div>
+
+    <div class="dep-section">
+      <div class="dep-section-header">
+        <i class="ti ti-briefcase" aria-hidden="true"></i> Holdings
+        <span class="dep-count">${symbols.length} symbols · ${trades.length} trades</span>
+      </div>
+      <div class="inv-holdings">${holdingCards}</div>
+    </div>`;
+
+  // wire IB file input
+  attachIbFileInput();
+
+  // render chart
+  requestAnimationFrame(() => {
+    const canvas = el('ibMonthChart');
+    if (!canvas || !window.Chart) return;
+    const vals = months.map(m => +monthly[m].toFixed(2));
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: months.map(m => {
+          const [y, mo] = m.split('-');
+          return new Date(y, mo - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+        }),
+        datasets: [{ label: 'Invested', data: vals,
+          backgroundColor: 'rgba(29,158,117,0.72)',
+          borderRadius: 3, borderSkipped: false }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67', autoSkip: false, maxRotation: 45 },
+               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } },
+          y: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67',
+                         callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v) },
+               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } }
+        }
+      }
+    });
+  });
+}
+
+window.toggleInvSym = function(sym) {
+  const card = el(`inv-sym-${sym}`);
+  if (card) card.classList.toggle('inv-expanded');
+};
+
+window.clearIbData = async function() {
+  if (!confirm('Clear all IB investing data? This will also delete ib.json on GitHub.')) return;
+  ibData = { trades: [], openPositions: {}, dividends: [] };
+  if (ghToken) {
+    try { await ghPutIb(ibData); } catch(e) { console.warn('Could not clear ib.json:', e); }
+  }
+  renderInvesting(el('tabContent'));
+};
+
+function attachIbFileInput() {
+  const input = el('ibCsvInput');
+  if (!input || input._wired) return;
+  input._wired = true;
+  input.addEventListener('change', e => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => mergeAndCommitIb(ev.target.result);
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+}
+
+async function mergeAndCommitIb(csvText) {
+  const sbar = el('ib-status');
+  const show = msg => { if (sbar) { sbar.textContent = msg; sbar.style.display = 'block'; } };
+
+  const { trades: newTrades, positions: newPositions, dividends: newDivs } = parseIbCSV(csvText);
+  if (newTrades.length === 0 && Object.keys(newPositions).length === 0) {
+    show('⚠️ No stock trade data found. Make sure you exported the full IB Activity Statement CSV.');
+    return;
+  }
+
+  const ibKey = t => `${t.symbol}|${t.dateRaw}|${t.qty}|${t.tPrice}`;
+  const existingKeys = new Set(ibData.trades.map(ibKey));
+  const toAdd = newTrades.filter(t => !existingKeys.has(ibKey(t)));
+
+  const merged = {
+    trades:        [...ibData.trades, ...toAdd],
+    openPositions: { ...ibData.openPositions, ...newPositions },
+    dividends:     [...ibData.dividends,
+                    ...newDivs.filter(d => !ibData.dividends.some(x => x.dateRaw === d.dateRaw && x.desc === d.desc))]
+  };
+
+  show(`Saving ${toAdd.length} new trades to GitHub…`);
+  const doSave = async () => {
+    try {
+      await ghPutIb(merged);
+      show(`✓ ${toAdd.length} new trades added · ${Object.keys(newPositions).length} positions updated`);
+      setTimeout(() => { if (sbar) sbar.style.display = 'none'; }, 4000);
+      renderInvesting(el('tabContent'));
+    } catch(e) {
+      show(`Error: ${e.message}`);
+    }
+  };
+
+  if (!ghToken) { showTokenModal(doSave); } else { await doSave(); }
+}
+
+// ── IB CSV parser ──────────────────────────────────────────────────────────
+function parseIbCSV(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const newTrades = [], newPositions = {}, newDivs = [];
+  let section = '';
+
+  for (const line of lines) {
+    const cols = parseIbCSVLine(line);
+    if (!cols.length) continue;
+    const first  = cols[0]?.trim() || '';
+    const second = cols[1]?.trim() || '';
+
+    if (second === 'Header') { section = first.toLowerCase(); continue; }
+
+    // ── stock trades ──
+    if (section === 'trades' && first === 'Trades' && second === 'Data') {
+      if (cols.length < 12) continue;
+      const assetCat = (cols[3] || '').trim();
+      if (!assetCat.toLowerCase().includes('stock')) continue;
+      const symbol  = (cols[5] || '').trim();
+      if (!symbol || symbol === 'Symbol') continue;
+      const dateRaw = (cols[6] || '').trim();
+      const qty     = parseFloat(cols[7]) || 0;
+      const tPrice  = parseFloat(cols[8]) || 0;
+      const proceeds = parseFloat((cols[10] || '').replace(/,/g, '')) || 0;
+      const comm    = parseFloat((cols[11] || '').replace(/,/g, '')) || 0;
+      const realPL  = parseFloat((cols[13] || '').replace(/,/g, '')) || 0;
+      if (!symbol || qty === 0) continue;
+      newTrades.push({ symbol, dateRaw, qty, tPrice, proceeds, comm, realPL });
+    }
+
+    // ── open positions ──
+    if (section === 'open positions' && first === 'Open Positions' && second === 'Data') {
+      if (cols.length < 11) continue;
+      const symbol     = (cols[5] || '').trim();
+      const qty        = parseFloat(cols[6]) || 0;
+      const closePrice = parseFloat(cols[10]) || 0;
+      const mktValue   = parseFloat((cols[11] || '').replace(/,/g, '')) || 0;
+      const unrealPL   = parseFloat((cols[12] || '').replace(/,/g, '')) || 0;
+      if (!symbol || qty === 0) continue;
+      newPositions[symbol] = { qty, closePrice, mktValue, unrealPL };
+    }
+
+    // ── dividends ──
+    if (section === 'dividends' && first === 'Dividends' && second === 'Data') {
+      if (cols.length < 6) continue;
+      const dateRaw = (cols[3] || '').trim();
+      const desc    = (cols[4] || '').trim();
+      const amount  = parseFloat((cols[5] || '').replace(/,/g, '')) || 0;
+      if (amount > 0) newDivs.push({ dateRaw, desc, amount });
+    }
+  }
+
+  return { trades: newTrades, positions: newPositions, dividends: newDivs };
+}
+
+function parseIbCSVLine(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { inQ = !inQ; }
+    else if (c === ',' && !inQ) { result.push(cur); cur = ''; }
+    else { cur += c; }
+  }
+  result.push(cur);
+  return result;
 }
 
 // ── File handlers ──────────────────────────────────────────────────────────
