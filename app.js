@@ -963,24 +963,34 @@ function renderOptChart() {
 // ── Live price fetcher ─────────────────────────────────────────────────────
 // SPYL is London-listed (USD-quoted on IB) — Yahoo Finance uses SPYL.L in GBP,
 // so we fetch it separately and use the IB cost basis for P&L estimation.
-const YF_MAP = { DGRO:'DGRO', FBTC:'FBTC', QQQM:'QQQM', SCHD:'SCHD', SMH:'SMH', VGT:'VGT' };
+const YF_MAP = { DGRO:'DGRO', FBTC:'FBTC', QQQM:'QQQM', SCHD:'SCHD', SMH:'SMH', VGT:'VGT', SPYL:'SPYL.L' };
 
 async function fetchAndUpdateLivePrices(tickers, openPositions) {
   try {
     const syms = tickers.filter(s => YF_MAP[s]).map(s => YF_MAP[s]);
     if (!syms.length) return;
 
-    // Yahoo Finance v7 quote endpoint — works from browser on most networks
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms.join(',')}`;
+    // Include GBPUSD rate so we can convert SPYL.L if it's quoted in GBP
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms.join(',')},GBPUSD%3DX`;
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const quotes = data?.quoteResponse?.result || [];
     if (!quotes.length) throw new Error('No quotes returned');
 
-    // Build price map
+    // Get GBP/USD rate for SPYL conversion if needed
+    const gbpusd = quotes.find(q => q.symbol === 'GBPUSD=X')?.regularMarketPrice || 1;
+
+    // Build price map — convert GBP-quoted prices to USD
     const livePrices = {};
-    for (const q of quotes) livePrices[q.symbol] = q.regularMarketPrice;
+    for (const q of quotes) {
+      if (q.symbol === 'GBPUSD=X') continue;
+      const price = q.regularMarketPrice;
+      const inUsd = (q.currency === 'GBp') ? price / 100 * gbpusd   // pence → USD
+                  : (q.currency === 'GBP') ? price * gbpusd          // pounds → USD
+                  : price;                                            // already USD
+      livePrices[q.symbol] = inUsd;
+    }
 
     // Update each ticker card in the DOM
     let totalLiveMkt = 0, totalLiveUnreal = 0;
