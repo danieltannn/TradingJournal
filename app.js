@@ -18,7 +18,7 @@ let ghToken    = localStorage.getItem('gh_token') || '';
 let ghFileSha  = null; // needed by GitHub API to update an existing file
 let sgdData    = [];   // SGD deposit records
 let sgdFileSha = null; // SHA for sgd.json
-let ibData     = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [] }; // IB investing + options data
+let ibData     = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] };
 let ibFileSha  = null; // SHA for ib.json
 
 const TABS = [
@@ -962,8 +962,14 @@ function renderOptChart() {
 
 // ── Investing tab ──────────────────────────────────────────────────────────
 function renderInvesting(container) {
-  const { trades, openPositions, dividends, sgdDeposits, forexTrades } = ibData;
+  const { trades, openPositions, dividends, sgdDeposits, forexTrades, corporateActions } = ibData;
   const hasData = trades.length > 0 || (sgdDeposits || []).length > 0;
+
+  // Build split lookup: symbol -> { ratio, date }
+  const splitMap = {};
+  for (const a of (corporateActions || [])) {
+    if (a.type === 'split') splitMap[a.symbol] = a;
+  }
 
   const importHtml = `
     <div class="dep-section">
@@ -1035,11 +1041,13 @@ function renderInvesting(container) {
     // Count buy trades for this ticker
     const buyCount = trades.filter(t => t.symbol === sym && t.qty > 0).length;
     const comm = trades.filter(t => t.symbol === sym).reduce((s, t) => s + Math.abs(t.comm), 0);
+    const split = splitMap[sym];
     return `
       <div class="inv-sym-card" id="inv-sym-${sym}">
         <div class="inv-sym-header" onclick="toggleInvSym('${sym}')">
           <div class="inv-sym-left">
             <span class="badge trade" style="font-size:12px;padding:3px 8px">${sym}</span>
+            ${split ? `<span class="badge expired" style="font-size:10px;padding:2px 6px">${split.ratio} split ${split.date}</span>` : ''}
             <div class="inv-sym-meta">
               <span>${pos.qty.toFixed(4)} shares</span>
               <span class="inv-sep">·</span>
@@ -1050,7 +1058,7 @@ function renderInvesting(container) {
           </div>
           <div class="inv-sym-right">
             <div class="inv-stat">
-              <span class="inv-stat-label">Cost Basis</span>
+              <span class="inv-stat-label">Amount Invested</span>
               <span class="inv-stat-val pos">${fmt(pos.costBasis)}</span>
             </div>
             <div class="inv-stat">
@@ -1070,6 +1078,7 @@ function renderInvesting(container) {
         </div>
         <div class="inv-sym-body">
           <div class="tbl-wrap" style="margin:10px 14px 14px">
+            ${split ? `<div style="font-size:11.5px;color:var(--text-secondary);padding:8px 10px;background:var(--bg-secondary);border-bottom:0.5px solid var(--border)"><i class="ti ti-info-circle" style="font-size:13px;margin-right:4px"></i>${split.ratio} stock split on ${split.date}. Pre-split trades show original qty &amp; price. Position (${pos.qty.toFixed(4)} shares @ $${(pos.costPrice||0).toFixed(2)}) is split-adjusted by IB.</div>` : ''}
             <table>
               <thead><tr><th>Date</th><th>Type</th><th>Qty</th><th>Price</th><th>Cost</th><th>Comm</th></tr></thead>
               <tbody>${trades.filter(t => t.symbol === sym && t.qty > 0)
@@ -1088,6 +1097,15 @@ function renderInvesting(container) {
         </div>
       </div>`;
   }).filter(Boolean).join('');
+
+  // ── monthly spend chart data ──
+  const monthly = {};
+  for (const t of trades) {
+    if (t.qty <= 0) continue;
+    const m = (t.dateRaw || '').slice(0, 7);
+    if (m) monthly[m] = (monthly[m] || 0) + Math.abs(t.proceeds);
+  }
+  const months = Object.keys(monthly).sort();
 
   container.innerHTML = importHtml + `
 
@@ -1130,11 +1148,19 @@ function renderInvesting(container) {
 
     <!-- ── Portfolio Summary ── -->
     <div class="section-metrics" style="margin-top:16px">
-      <div class="metric"><div class="label">Total Cost Basis</div><div class="value pos">${fmt(totalCostBasis)}</div></div>
+      <div class="metric"><div class="label">Total Amount Invested</div><div class="value pos">${fmt(totalCostBasis)}</div></div>
       <div class="metric"><div class="label">Market Value</div><div class="value">${fmt(totalMktVal)}</div></div>
       <div class="metric"><div class="label">Unrealised P&L</div>
         <div class="value ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal > 0 ? '+' : ''}${fmt(totalUnreal)}</div></div>
       <div class="metric"><div class="label">Dividends Rcvd</div><div class="value pos">${fmt(totalDiv)}</div></div>
+    </div>
+
+    <!-- ── Monthly chart ── -->
+    <div class="chart-card">
+      <h3>Monthly Investment (USD)</h3>
+      <div style="position:relative;height:160px">
+        <canvas id="ibMonthChart" role="img" aria-label="Monthly investment bar chart"></canvas>
+      </div>
     </div>
 
     <!-- ── Per-ticker holdings ── -->
@@ -1149,7 +1175,36 @@ function renderInvesting(container) {
     ${buildOptionsSection()}`;
 
   attachIbFileInput();
-  requestAnimationFrame(() => { renderOptChart(); });
+
+  requestAnimationFrame(() => {
+    const canvas = el('ibMonthChart');
+    if (!canvas || !window.Chart) return;
+    const vals = months.map(m => +monthly[m].toFixed(2));
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: months.map(m => {
+          const [y, mo] = m.split('-');
+          return new Date(y, mo - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+        }),
+        datasets: [{ label: 'Invested', data: vals,
+          backgroundColor: 'rgba(29,158,117,0.72)', borderRadius: 3, borderSkipped: false }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67', autoSkip: false, maxRotation: 45 },
+               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } },
+          y: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67',
+                         callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v) },
+               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } }
+        }
+      }
+    });
+    renderOptChart();
+  });
 }
 
 window.toggleInvSym = function(sym) {
@@ -1159,7 +1214,7 @@ window.toggleInvSym = function(sym) {
 
 window.clearIbData = async function() {
   if (!confirm('Clear all IB investing data? This will also delete ib.json on GitHub.')) return;
-  ibData = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [] };
+  ibData = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] };
   if (ghToken) {
     try { await ghPutIb(ibData); } catch(e) { console.warn('Could not clear ib.json:', e); }
   }
@@ -1185,7 +1240,8 @@ async function mergeAndCommitIb(csvText) {
 
   const { trades: newTrades, positions: newPositions, dividends: newDivs,
           optionTrades: newOpts, assignmentStocks: newAssigns,
-          sgdDeposits: newSgdDeps, forexTrades: newForex } = parseIbCSV(csvText);
+          sgdDeposits: newSgdDeps, forexTrades: newForex,
+          corporateActions: newCorpActs } = parseIbCSV(csvText);
 
   const ibKey = t => `${t.symbol}|${t.dateRaw}|${t.qty}|${t.tPrice}`;
   const existingStockKeys  = new Set((ibData.trades || []).map(ibKey));
@@ -1213,6 +1269,8 @@ async function mergeAndCommitIb(csvText) {
                        ...newSgdDeps.filter(d => !(ibData.sgdDeposits || []).some(x => x.dateRaw === d.dateRaw && x.amount === d.amount))],
     forexTrades:      [...(ibData.forexTrades || []),
                        ...newForex.filter(f => !(ibData.forexTrades || []).some(x => x.dateRaw === f.dateRaw && x.usdAmt === f.usdAmt))],
+    corporateActions: [...(ibData.corporateActions || []),
+                       ...newCorpActs.filter(a => !(ibData.corporateActions || []).some(x => x.symbol === a.symbol && x.date === a.date && x.type === a.type))],
   };
 
   show(`Saving ${totalNew} new rows to GitHub…`);
@@ -1235,8 +1293,9 @@ function parseIbCSV(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const newPositions = {}, newDivs = [];
   const newOptionTrades = [];
-  const newSgdDeposits = [];   // SGD cash in/out
-  const newForexTrades = [];   // SGD↔USD conversions
+  const newSgdDeposits = [];
+  const newForexTrades = [];
+  const newCorpActions = [];  // stock splits etc.
   const allStockRows = [];
   let section = '';
 
@@ -1296,6 +1355,21 @@ function parseIbCSV(text) {
       if (amount > 0) newDivs.push({ dateRaw, desc, amount });
     }
 
+    // ── corporate actions (splits, etc.) ──
+    if (section === 'corporate actions' && first === 'Corporate Actions' && second === 'Data') {
+      if (cols.length < 8) continue;
+      const desc = (cols[6] || '').trim();
+      const qty  = safeFloat(cols[7]);
+      const date = (cols[4] || '').trim();
+      // Parse "VGT(US92...) Split 8 for 1 (...)"
+      const splitMatch = desc.match(/^(\w+)\(.*?\)\s+Split\s+(\d+)\s+for\s+(\d+)/i);
+      if (splitMatch) {
+        const symbol = splitMatch[1];
+        const ratio  = parseInt(splitMatch[2]) + ':' + parseInt(splitMatch[3]);
+        newCorpActions.push({ symbol, date, type: 'split', ratio, sharesAdded: qty, desc });
+      }
+    }
+
     // ── SGD deposits & withdrawals ──
     if ((section === 'deposits & withdrawals' || section === 'deposits &amp; withdrawals')
         && first === 'Deposits & Withdrawals' && second === 'Data') {
@@ -1321,7 +1395,8 @@ function parseIbCSV(text) {
 
   return { trades: newTrades, positions: newPositions, dividends: newDivs,
            optionTrades: newOptionTrades, assignmentStocks: newAssignmentStocks,
-           sgdDeposits: newSgdDeposits, forexTrades: newForexTrades };
+           sgdDeposits: newSgdDeposits, forexTrades: newForexTrades,
+           corporateActions: newCorpActions };
 }
 
 function safeFloat(s) {
