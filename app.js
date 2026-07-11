@@ -18,7 +18,7 @@ let ghToken    = localStorage.getItem('gh_token') || '';
 let ghFileSha  = null; // needed by GitHub API to update an existing file
 let sgdData    = [];   // SGD deposit records
 let sgdFileSha = null; // SHA for sgd.json
-let ibData     = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [] }; // IB investing + options data
+let ibData     = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [] }; // IB investing + options data
 let ibFileSha  = null; // SHA for ib.json
 
 const TABS = [
@@ -962,27 +962,27 @@ function renderOptChart() {
 
 // ── Investing tab ──────────────────────────────────────────────────────────
 function renderInvesting(container) {
-  const { trades, openPositions, dividends } = ibData;
-  const hasTrades = trades.length > 0;
+  const { trades, openPositions, dividends, sgdDeposits, forexTrades } = ibData;
+  const hasData = trades.length > 0 || (sgdDeposits || []).length > 0;
 
   const importHtml = `
     <div class="dep-section">
       <div class="dep-section-header">
         <i class="ti ti-file-import" aria-hidden="true"></i>
         IB Activity Statement
-        <span class="dep-count">${trades.length} trades loaded</span>
+        <span class="dep-count">${trades.length} trades · ${(sgdDeposits||[]).length} SGD entries</span>
         <div style="margin-left:auto;display:flex;gap:6px">
           <label class="inv-import-btn">
             <input type="file" accept=".csv" id="ibCsvInput" style="display:none">
             <i class="ti ti-upload" aria-hidden="true"></i> Import CSV
           </label>
-          ${hasTrades ? `<button class="inv-clear-btn" onclick="clearIbData()">Clear</button>` : ''}
+          ${hasData ? `<button class="inv-clear-btn" onclick="clearIbData()">Clear</button>` : ''}
         </div>
       </div>
       <div id="ib-status" style="display:none;font-size:12px;padding:4px 0;color:var(--text-secondary)"></div>
     </div>`;
 
-  if (!hasTrades) {
+  if (!hasData) {
     container.innerHTML = importHtml + `
       <div class="upload-zone" style="margin:0;cursor:default">
         <i class="ti ti-building-bank" aria-hidden="true"></i>
@@ -994,26 +994,102 @@ function renderInvesting(container) {
     return;
   }
 
-  // ── aggregate by symbol ──
-  const bySymbol = {};
-  for (const t of trades) {
-    if (!bySymbol[t.symbol]) bySymbol[t.symbol] = { buys: [], sells: [] };
-    if (t.qty > 0) bySymbol[t.symbol].buys.push(t);
-    else           bySymbol[t.symbol].sells.push(t);
-  }
-  const symbols = Object.keys(bySymbol);
+  // ── SGD deposit / withdrawal summary ──
+  const deps   = (sgdDeposits || []);
+  const sgdIn  = deps.filter(d => d.amount > 0).reduce((s, d) => s + d.amount, 0);
+  const sgdOut = deps.filter(d => d.amount < 0).reduce((s, d) => s + d.amount, 0);
+  const sgdNet = sgdIn + sgdOut;
 
-  // ── totals ──
-  let totalCost = 0, totalComm = 0, totalMktVal = 0, totalUnreal = 0;
-  for (const sym of symbols) {
-    totalCost  += bySymbol[sym].buys.reduce((s, t) => s + Math.abs(t.proceeds), 0);
-    totalComm  += trades.filter(t => t.symbol === sym).reduce((s, t) => s + Math.abs(t.comm), 0);
-    const pos   = openPositions[sym];
-    if (pos) { totalMktVal += pos.mktValue || 0; totalUnreal += pos.unrealPL || 0; }
-  }
-  const totalDiv = dividends.reduce((s, d) => s + d.amount, 0);
+  // Forex: separate conversions IN (SGD→USD, positive usdAmt) vs OUT (USD→SGD, negative usdAmt)
+  const fxAll    = (forexTrades || []);
+  const fxIn     = fxAll.filter(f => f.usdAmt > 0);   // SGD converted to USD
+  const fxOut    = fxAll.filter(f => f.usdAmt < 0);   // USD converted back to SGD
+  const usdIn    = fxIn.reduce((s, f) => s + f.usdAmt, 0);
+  const usdOut   = fxOut.reduce((s, f) => s + f.usdAmt, 0);  // negative
+  const sgdUsed  = fxIn.reduce((s, f) => s + Math.abs(f.sgdAmt), 0);
+  const fxComm   = fxAll.reduce((s, f) => s + Math.abs(f.comm), 0);
+  const netUsd   = usdIn + usdOut;
+  const effRate  = sgdUsed > 0 && usdIn > 0 ? sgdUsed / usdIn : 0;
 
-  // ── monthly spend for chart ──
+  const fmtSgd = n => 'S$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const sgdRows = deps.map(d => `<tr>
+    <td>${(d.dateRaw || '').slice(0, 10)}</td>
+    <td><span class="badge ${d.amount > 0 ? 'open' : 'closed'}">${d.amount > 0 ? 'Deposit' : 'Withdrawal'}</span></td>
+    <td style="color:var(--text-secondary);font-size:11.5px">${d.desc}</td>
+    <td class="${d.amount > 0 ? 'pos' : 'neg'}">${d.amount > 0 ? '+' : ''}${fmtSgd(d.amount)}</td>
+  </tr>`).join('');
+
+  // ── per-ticker cost basis from open positions (most accurate — IB calculated) ──
+  const CURRENT_TICKERS = ['DGRO','FBTC','QQQM','SCHD','SMH','SPYL','VGT'];
+  const totalDiv = (dividends || []).reduce((s, d) => s + d.amount, 0);
+
+  let totalCostBasis = 0, totalMktVal = 0, totalUnreal = 0;
+  const tickerRows = CURRENT_TICKERS.map(sym => {
+    const pos = openPositions[sym];
+    if (!pos) return '';
+    totalCostBasis += pos.costBasis || 0;
+    totalMktVal    += pos.mktValue  || 0;
+    totalUnreal    += pos.unrealPL  || 0;
+    const pct = pos.costBasis > 0 ? ((pos.unrealPL / pos.costBasis) * 100).toFixed(1) : null;
+    // Count buy trades for this ticker
+    const buyCount = trades.filter(t => t.symbol === sym && t.qty > 0).length;
+    const comm = trades.filter(t => t.symbol === sym).reduce((s, t) => s + Math.abs(t.comm), 0);
+    return `
+      <div class="inv-sym-card" id="inv-sym-${sym}">
+        <div class="inv-sym-header" onclick="toggleInvSym('${sym}')">
+          <div class="inv-sym-left">
+            <span class="badge trade" style="font-size:12px;padding:3px 8px">${sym}</span>
+            <div class="inv-sym-meta">
+              <span>${pos.qty.toFixed(4)} shares</span>
+              <span class="inv-sep">·</span>
+              <span>avg $${(pos.costPrice || 0).toFixed(2)}</span>
+              <span class="inv-sep">·</span>
+              <span>${buyCount} buys</span>
+            </div>
+          </div>
+          <div class="inv-sym-right">
+            <div class="inv-stat">
+              <span class="inv-stat-label">Cost Basis</span>
+              <span class="inv-stat-val pos">${fmt(pos.costBasis)}</span>
+            </div>
+            <div class="inv-stat">
+              <span class="inv-stat-label">Mkt Value</span>
+              <span class="inv-stat-val">${fmt(pos.mktValue)}</span>
+            </div>
+            <div class="inv-stat">
+              <span class="inv-stat-label">Unreal P&L</span>
+              <span class="inv-stat-val ${pos.unrealPL >= 0 ? 'pos' : 'neg'}">${pos.unrealPL > 0 ? '+' : ''}${fmt(pos.unrealPL)}${pct ? ` (${pct}%)` : ''}</span>
+            </div>
+            <div class="inv-stat">
+              <span class="inv-stat-label">Comm</span>
+              <span class="inv-stat-val neg">${fmt(comm)}</span>
+            </div>
+            <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
+          </div>
+        </div>
+        <div class="inv-sym-body">
+          <div class="tbl-wrap" style="margin:10px 14px 14px">
+            <table>
+              <thead><tr><th>Date</th><th>Type</th><th>Qty</th><th>Price</th><th>Cost</th><th>Comm</th></tr></thead>
+              <tbody>${trades.filter(t => t.symbol === sym && t.qty > 0)
+                .sort((a, b) => (a.dateRaw || '').localeCompare(b.dateRaw || ''))
+                .map(t => `<tr>
+                  <td>${(t.dateRaw || '').slice(0, 10)}</td>
+                  <td><span class="badge open">BUY</span></td>
+                  <td class="mono">${t.qty.toFixed(4)}</td>
+                  <td class="mono">$${t.tPrice.toFixed(4)}</td>
+                  <td class="pos">$${Math.abs(t.proceeds).toFixed(2)}</td>
+                  <td class="neg">$${Math.abs(t.comm).toFixed(2)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  }).filter(Boolean).join('');
+
+  // ── monthly spend chart data ──
   const monthly = {};
   for (const t of trades) {
     if (t.qty <= 0) continue;
@@ -1022,92 +1098,42 @@ function renderInvesting(container) {
   }
   const months = Object.keys(monthly).sort();
 
-  // ── per-symbol cards ──
-  const sortedSyms = [...symbols].sort((a, b) => {
-    const ca = bySymbol[a].buys.reduce((s, t) => s + Math.abs(t.proceeds), 0);
-    const cb = bySymbol[b].buys.reduce((s, t) => s + Math.abs(t.proceeds), 0);
-    return cb - ca;
-  });
-
-  const holdingCards = sortedSyms.map(sym => {
-    const { buys, sells } = bySymbol[sym];
-    const totalBuyCost = buys.reduce((s, t) => s + Math.abs(t.proceeds), 0);
-    const symComm      = trades.filter(t => t.symbol === sym).reduce((s, t) => s + Math.abs(t.comm), 0);
-    const netShares    = buys.reduce((s, t) => s + t.qty, 0) - sells.reduce((s, t) => s + Math.abs(t.qty), 0);
-    const avgCost      = netShares > 0 ? totalBuyCost / netShares : 0;
-    const pos          = openPositions[sym];
-    const lastPrice    = pos ? pos.closePrice : 0;
-    const mktValue     = pos ? pos.mktValue   : 0;
-    const unrealPL     = pos ? pos.unrealPL   : 0;
-    const pct          = totalBuyCost > 0 && unrealPL ? (unrealPL / totalBuyCost * 100).toFixed(1) : null;
-    const allTrades    = [...buys, ...sells].sort((a, b) => (a.dateRaw || '').localeCompare(b.dateRaw || ''));
-    const tradeRowsHtml = allTrades.map(t => `
-      <tr>
-        <td>${(t.dateRaw || '').slice(0, 10)}</td>
-        <td><span class="badge ${t.qty > 0 ? 'open' : 'closed'}">${t.qty > 0 ? 'BUY' : 'SELL'}</span></td>
-        <td class="mono">${Math.abs(t.qty).toFixed(4)}</td>
-        <td class="mono">$${t.tPrice.toFixed(4)}</td>
-        <td class="pos">$${Math.abs(t.proceeds).toFixed(2)}</td>
-        <td class="neg">$${Math.abs(t.comm).toFixed(2)}</td>
-        <td class="${t.realPL > 0 ? 'pos' : t.realPL < 0 ? 'neg' : ''}">
-          ${t.realPL !== 0 ? (t.realPL > 0 ? '+' : '') + fmt(t.realPL) : '—'}
-        </td>
-      </tr>`).join('');
-
-    return `
-      <div class="inv-sym-card" id="inv-sym-${sym}">
-        <div class="inv-sym-header" onclick="toggleInvSym('${sym}')">
-          <div class="inv-sym-left">
-            <span class="badge trade" style="font-size:12px;padding:3px 8px">${sym}</span>
-            <div class="inv-sym-meta">
-              <span>${netShares.toFixed(4)} shares</span>
-              <span class="inv-sep">·</span>
-              <span>avg $${avgCost.toFixed(2)}</span>
-              <span class="inv-sep">·</span>
-              <span>${buys.length + sells.length} trades</span>
-            </div>
-          </div>
-          <div class="inv-sym-right">
-            <div class="inv-stat">
-              <span class="inv-stat-label">Invested</span>
-              <span class="inv-stat-val pos">${fmt(totalBuyCost)}</span>
-            </div>
-            ${mktValue > 0 ? `<div class="inv-stat">
-              <span class="inv-stat-label">Mkt Val</span>
-              <span class="inv-stat-val">${fmt(mktValue)}</span>
-            </div>` : ''}
-            ${unrealPL !== 0 ? `<div class="inv-stat">
-              <span class="inv-stat-label">P&L</span>
-              <span class="inv-stat-val ${unrealPL >= 0 ? 'pos' : 'neg'}">${unrealPL > 0 ? '+' : ''}${fmt(unrealPL)}${pct ? ` (${pct}%)` : ''}</span>
-            </div>` : ''}
-            <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
-          </div>
-        </div>
-        <div class="inv-sym-body">
-          <div class="tbl-wrap" style="margin:10px 14px 14px">
-            <table>
-              <thead><tr>
-                <th>Date</th><th>Type</th><th>Qty</th><th>Price</th>
-                <th>Cost</th><th>Comm</th><th>Real P&L</th>
-              </tr></thead>
-              <tbody>${tradeRowsHtml}</tbody>
-            </table>
-          </div>
-        </div>
-      </div>`;
-  }).join('');
-
   container.innerHTML = importHtml + `
-    <div class="section-metrics">
-      <div class="metric"><div class="label">Total Invested</div><div class="value pos">${fmt(totalCost)}</div></div>
-      <div class="metric"><div class="label">Market Value</div><div class="value">${totalMktVal > 0 ? fmt(totalMktVal) : '—'}</div></div>
-      <div class="metric"><div class="label">Unrealised P&L</div>
-        <div class="value ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal !== 0 ? (totalUnreal > 0 ? '+' : '') + fmt(totalUnreal) : '—'}</div></div>
-      <div class="metric"><div class="label">Symbols</div><div class="value">${symbols.length}</div></div>
-      <div class="metric"><div class="label">Commissions</div><div class="value neg">${fmt(totalComm)}</div></div>
-      <div class="metric"><div class="label">Dividends</div><div class="value pos">${fmt(totalDiv)}</div></div>
+
+    <!-- ── SGD Deposits ── -->
+    <div class="dep-section">
+      <div class="dep-section-header">
+        <i class="ti ti-cash" aria-hidden="true"></i> SGD Deposits &amp; Withdrawals
+        <span class="dep-count">${deps.length} entries</span>
+      </div>
+      <div class="opt-summary-grid" style="margin-bottom:12px">
+        <div class="metric"><div class="label">Total Deposited</div><div class="value pos">${fmtSgd(sgdIn)}</div></div>
+        <div class="metric"><div class="label">Total Withdrawn</div><div class="value neg">${fmtSgd(Math.abs(sgdOut))}</div></div>
+        <div class="metric"><div class="label">Net SGD</div><div class="value">${fmtSgd(sgdNet)}</div></div>
+        <div class="metric"><div class="label">Converted → USD</div><div class="value pos">${fmt(usdIn)}</div></div>
+        <div class="metric"><div class="label">Withdrawn → USD</div><div class="value neg">${fmt(Math.abs(usdOut))}</div></div>
+        <div class="metric"><div class="label">Net USD (forex)</div><div class="value">${fmt(netUsd)}</div></div>
+        <div class="metric"><div class="label">Avg Rate</div><div class="value">${effRate.toFixed(5)} SGD/USD</div></div>
+        <div class="metric"><div class="label">Forex Fees (USD)</div><div class="value neg">${fmt(fxComm)}</div></div>
+      </div>
+      <div class="tbl-wrap">
+        <table><thead><tr>
+          <th style="width:90px">Date</th><th style="width:100px">Type</th>
+          <th>Description</th><th style="width:110px">Amount</th>
+        </tr></thead><tbody>${sgdRows}</tbody></table>
+      </div>
     </div>
 
+    <!-- ── Portfolio Summary ── -->
+    <div class="section-metrics" style="margin-top:16px">
+      <div class="metric"><div class="label">Total Cost Basis</div><div class="value pos">${fmt(totalCostBasis)}</div></div>
+      <div class="metric"><div class="label">Market Value</div><div class="value">${fmt(totalMktVal)}</div></div>
+      <div class="metric"><div class="label">Unrealised P&L</div>
+        <div class="value ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal > 0 ? '+' : ''}${fmt(totalUnreal)}</div></div>
+      <div class="metric"><div class="label">Dividends Rcvd</div><div class="value pos">${fmt(totalDiv)}</div></div>
+    </div>
+
+    <!-- ── Monthly chart ── -->
     <div class="chart-card">
       <h3>Monthly Investment (USD)</h3>
       <div style="position:relative;height:160px">
@@ -1115,20 +1141,19 @@ function renderInvesting(container) {
       </div>
     </div>
 
+    <!-- ── Per-ticker holdings ── -->
     <div class="dep-section">
       <div class="dep-section-header">
-        <i class="ti ti-briefcase" aria-hidden="true"></i> Stock Portfolio
-        <span class="dep-count">${symbols.length} symbols · ${trades.length} trades</span>
+        <i class="ti ti-briefcase" aria-hidden="true"></i> Holdings
+        <span class="dep-count">${CURRENT_TICKERS.filter(s => openPositions[s]).length} positions</span>
       </div>
-      <div class="inv-holdings">${holdingCards}</div>
+      <div class="inv-holdings">${tickerRows}</div>
     </div>
 
     ${buildOptionsSection()}`;
 
-  // wire IB file input
   attachIbFileInput();
 
-  // render stock invest chart
   requestAnimationFrame(() => {
     const canvas = el('ibMonthChart');
     if (!canvas || !window.Chart) return;
@@ -1142,8 +1167,7 @@ function renderInvesting(container) {
           return new Date(y, mo - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
         }),
         datasets: [{ label: 'Invested', data: vals,
-          backgroundColor: 'rgba(29,158,117,0.72)',
-          borderRadius: 3, borderSkipped: false }]
+          backgroundColor: 'rgba(29,158,117,0.72)', borderRadius: 3, borderSkipped: false }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
@@ -1157,7 +1181,6 @@ function renderInvesting(container) {
         }
       }
     });
-    // render options chart after DOM is ready
     renderOptChart();
   });
 }
@@ -1169,7 +1192,7 @@ window.toggleInvSym = function(sym) {
 
 window.clearIbData = async function() {
   if (!confirm('Clear all IB investing data? This will also delete ib.json on GitHub.')) return;
-  ibData = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [] };
+  ibData = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [] };
   if (ghToken) {
     try { await ghPutIb(ibData); } catch(e) { console.warn('Could not clear ib.json:', e); }
   }
@@ -1194,7 +1217,8 @@ async function mergeAndCommitIb(csvText) {
   const show = msg => { if (sbar) { sbar.textContent = msg; sbar.style.display = 'block'; } };
 
   const { trades: newTrades, positions: newPositions, dividends: newDivs,
-          optionTrades: newOpts, assignmentStocks: newAssigns } = parseIbCSV(csvText);
+          optionTrades: newOpts, assignmentStocks: newAssigns,
+          sgdDeposits: newSgdDeps, forexTrades: newForex } = parseIbCSV(csvText);
 
   const ibKey = t => `${t.symbol}|${t.dateRaw}|${t.qty}|${t.tPrice}`;
   const existingStockKeys  = new Set((ibData.trades || []).map(ibKey));
@@ -1218,6 +1242,10 @@ async function mergeAndCommitIb(csvText) {
                        ...newDivs.filter(d => !(ibData.dividends || []).some(x => x.dateRaw === d.dateRaw && x.desc === d.desc))],
     optionTrades:     [...(ibData.optionTrades || []), ...toAddOpts],
     assignmentStocks: [...(ibData.assignmentStocks || []), ...toAddAssigns],
+    sgdDeposits:      [...(ibData.sgdDeposits || []),
+                       ...newSgdDeps.filter(d => !(ibData.sgdDeposits || []).some(x => x.dateRaw === d.dateRaw && x.amount === d.amount))],
+    forexTrades:      [...(ibData.forexTrades || []),
+                       ...newForex.filter(f => !(ibData.forexTrades || []).some(x => x.dateRaw === f.dateRaw && x.usdAmt === f.usdAmt))],
   };
 
   show(`Saving ${totalNew} new rows to GitHub…`);
@@ -1240,7 +1268,8 @@ function parseIbCSV(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const newPositions = {}, newDivs = [];
   const newOptionTrades = [];
-  // Collect ALL stock rows first so we can do a second pass
+  const newSgdDeposits = [];   // SGD cash in/out
+  const newForexTrades = [];   // SGD↔USD conversions
   const allStockRows = [];
   let section = '';
 
@@ -1252,6 +1281,7 @@ function parseIbCSV(text) {
 
     if (second === 'Header') { section = first.toLowerCase(); continue; }
 
+    // ── trades ──
     if (section === 'trades' && first === 'Trades' && second === 'Data') {
       if ((cols[2] || '').trim() !== 'Order') continue;
       if (cols.length < 12) continue;
@@ -1270,20 +1300,27 @@ function parseIbCSV(text) {
         newOptionTrades.push({ symbol, dateRaw, qty, tPrice, proceeds, comm, realPL, code, cat });
       } else if (cat.includes('Stock')) {
         allStockRows.push({ symbol, dateRaw, qty, tPrice, proceeds, comm, realPL, code });
+      } else if (cat.includes('Forex') && symbol.includes('SGD')) {
+        // qty = USD received (+) or paid (-), proceeds = SGD paid (negative for buys)
+        newForexTrades.push({ dateRaw, usdAmt: qty, sgdAmt: proceeds, rate: tPrice, comm });
       }
     }
 
+    // ── open positions — capture cost basis ──
     if (section === 'open positions' && first === 'Open Positions' && second === 'Data') {
-      if (cols.length < 11) continue;
+      if (cols.length < 12) continue;
       const symbol     = (cols[5] || '').trim();
       const qty        = safeFloat(cols[6]);
+      const costPrice  = safeFloat(cols[8]);   // avg cost per share
+      const costBasis  = safeFloat(cols[9]);   // total cost basis
       const closePrice = safeFloat(cols[10]);
       const mktValue   = safeFloat(cols[11]);
       const unrealPL   = safeFloat(cols[12]);
       if (!symbol || qty === 0) continue;
-      newPositions[symbol] = { qty, closePrice, mktValue, unrealPL };
+      newPositions[symbol] = { qty, costPrice, costBasis, closePrice, mktValue, unrealPL };
     }
 
+    // ── dividends ──
     if (section === 'dividends' && first === 'Dividends' && second === 'Data') {
       if (cols.length < 6) continue;
       const dateRaw = (cols[3] || '').trim();
@@ -1291,29 +1328,33 @@ function parseIbCSV(text) {
       const amount  = safeFloat(cols[5]);
       if (amount > 0) newDivs.push({ dateRaw, desc, amount });
     }
-  }
 
-  // Second pass: separate assignment stocks (and their closes) from DCA stocks
-  // A stock is assignment-related if it has code 'A' (assigned buy)
-  // Its close is the matching sell of the same symbol that follows
-  const assignedSymbols = new Set(
-    allStockRows.filter(r => r.code.split(';').includes('A')).map(r => r.symbol)
-  );
-
-  const newTrades = [];
-  const newAssignmentStocks = [];
-
-  for (const r of allStockRows) {
-    if (assignedSymbols.has(r.symbol)) {
-      // All trades for this symbol (buy via assignment + close sell) go to options section
-      newAssignmentStocks.push(r);
-    } else {
-      newTrades.push(r);
+    // ── SGD deposits & withdrawals ──
+    if ((section === 'deposits & withdrawals' || section === 'deposits &amp; withdrawals')
+        && first === 'Deposits & Withdrawals' && second === 'Data') {
+      if (cols.length < 6) continue;
+      const currency = (cols[2] || '').trim();
+      if (currency !== 'SGD') continue;
+      const dateRaw = (cols[3] || '').trim();
+      const desc    = (cols[4] || '').trim();
+      const amount  = safeFloat(cols[5]);
+      if (amount !== 0) newSgdDeposits.push({ dateRaw, desc, amount });
     }
   }
 
+  // Second pass: separate assignment stocks from DCA stocks
+  const assignedSymbols = new Set(
+    allStockRows.filter(r => r.code.split(';').includes('A')).map(r => r.symbol)
+  );
+  const newTrades = [], newAssignmentStocks = [];
+  for (const r of allStockRows) {
+    if (assignedSymbols.has(r.symbol)) newAssignmentStocks.push(r);
+    else newTrades.push(r);
+  }
+
   return { trades: newTrades, positions: newPositions, dividends: newDivs,
-           optionTrades: newOptionTrades, assignmentStocks: newAssignmentStocks };
+           optionTrades: newOptionTrades, assignmentStocks: newAssignmentStocks,
+           sgdDeposits: newSgdDeposits, forexTrades: newForexTrades };
 }
 
 function safeFloat(s) {
