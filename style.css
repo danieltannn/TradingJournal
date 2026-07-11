@@ -792,3 +792,8 @@ tr:hover td { background: var(--bg-secondary); }
   color: var(--text);
   box-shadow: var(--shadow);
 }
+
+/* Options section — loss border variant */
+.inv-sym-card.inv-sym-loss {
+  border-left-color: var(--red);
+}
