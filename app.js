@@ -18,7 +18,7 @@ let ghToken    = localStorage.getItem('gh_token') || '';
 let ghFileSha  = null; // needed by GitHub API to update an existing file
 let sgdData    = [];   // SGD deposit records
 let sgdFileSha = null; // SHA for sgd.json
-let ibData     = { trades: [], openPositions: {}, dividends: [] }; // IB investing data
+let ibData     = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [] }; // IB investing + options data
 let ibFileSha  = null; // SHA for ib.json
 
 const TABS = [
@@ -398,6 +398,9 @@ function renderModeBar() {
     <button class="mode-btn ${activeMode === 'trading'   ? 'active' : ''}" onclick="switchMode('trading')">
       <i class="ti ti-arrows-exchange" aria-hidden="true"></i> Trading
     </button>
+    <button class="mode-btn ${activeMode === 'options'   ? 'active' : ''}" onclick="switchMode('options')">
+      <i class="ti ti-chart-candle" aria-hidden="true"></i> Options
+    </button>
     <button class="mode-btn ${activeMode === 'investing' ? 'active' : ''}" onclick="switchMode('investing')">
       <i class="ti ti-trending-up" aria-hidden="true"></i> Investing
     </button>`;
@@ -417,12 +420,6 @@ function renderForMode() {
   }
   renderTabContent();
 }
-
-window.switchMode = function(mode) {
-  activeMode = mode;
-  renderModeBar();
-  renderForMode();
-};
 
 // ── Metrics ────────────────────────────────────────────────────────────────
 function renderMetrics() {
@@ -455,10 +452,18 @@ window.switchTab = switchTab;
 function renderTabContent() {
   if (activeMode === 'investing') {
     renderInvesting(el('tabContent'));
+  } else if (activeMode === 'options') {
+    renderOptions(el('tabContent'));
   } else {
     [renderSummary, renderDeposits, renderTrades, renderAll][activeTab](el('tabContent'));
   }
 }
+
+window.switchMode = function(mode) {
+  activeMode = mode;
+  renderModeBar();
+  renderForMode();
+};
 
 // ── Pagination ─────────────────────────────────────────────────────────────
 const PAGE_SIZE = 20;
@@ -791,6 +796,208 @@ function buildAllTable(q, typeFilter) {
     [{label:'Date',w:'82px'},{label:'Type',w:'90px'},{label:'Sub type',w:'90px'},{label:'Symbol'},{label:'Description',w:'170px'},{label:'Comm',w:'55px'},{label:'Fees',w:'45px'},{label:'Total',w:'80px'}]);
 }
 
+// ── Options tab ────────────────────────────────────────────────────────────
+function renderOptions(container) {
+  const optTrades   = ibData.optionTrades     || [];
+  const assignStock = ibData.assignmentStocks || [];
+  const hasData     = optTrades.length > 0 || assignStock.length > 0;
+
+  const importHtml = `
+    <div class="dep-section">
+      <div class="dep-section-header">
+        <i class="ti ti-file-import" aria-hidden="true"></i>
+        IB Activity Statement
+        <span class="dep-count">${optTrades.length} option trades · ${assignStock.length} assignments</span>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <label class="inv-import-btn">
+            <input type="file" accept=".csv" id="ibCsvInput" style="display:none">
+            <i class="ti ti-upload" aria-hidden="true"></i> Import CSV
+          </label>
+          ${hasData ? `<button class="inv-clear-btn" onclick="clearIbData()">Clear</button>` : ''}
+        </div>
+      </div>
+      <div id="ib-status" style="display:none;font-size:12px;padding:4px 0;color:var(--text-secondary)"></div>
+    </div>`;
+
+  if (!hasData) {
+    container.innerHTML = importHtml + `
+      <div class="upload-zone" style="margin:0;cursor:default">
+        <i class="ti ti-chart-candle" aria-hidden="true"></i>
+        <p class="upload-title">No options data yet</p>
+        <p class="upload-sub">Import your IB Activity Statement CSV above — options and assignments are parsed automatically</p>
+      </div>`;
+    attachIbFileInput();
+    return;
+  }
+
+  // ── group option trades by underlying ──
+  const byUl = {};
+  for (const t of optTrades) {
+    const ul = t.symbol.split(' ')[0];
+    if (!byUl[ul]) byUl[ul] = { optTrades: [], assignTrades: [], pl: 0, comm: 0 };
+    byUl[ul].optTrades.push(t);
+    byUl[ul].pl   += t.realPL;
+    byUl[ul].comm += t.comm;
+  }
+  // attach assignment stocks to matching underlying
+  for (const t of assignStock) {
+    // Try to find the matching underlying from option trades
+    const ul = Object.keys(byUl).find(k => t.symbol.startsWith(k)) || t.symbol;
+    if (!byUl[ul]) byUl[ul] = { optTrades: [], assignTrades: [], pl: 0, comm: 0 };
+    byUl[ul].assignTrades.push(t);
+    byUl[ul].pl   += t.realPL;
+    byUl[ul].comm += t.comm;
+  }
+
+  // ── summary ──
+  const totalPL    = Object.values(byUl).reduce((s, d) => s + d.pl, 0);
+  const totalComm  = Object.values(byUl).reduce((s, d) => s + Math.abs(d.comm), 0);
+  const totalContracts = optTrades.length;
+  const winners    = Object.values(byUl).filter(d => d.pl > 0).length;
+  const losers     = Object.values(byUl).filter(d => d.pl < 0).length;
+
+  // ── monthly options P&L chart ──
+  const monthly = {};
+  for (const t of optTrades) {
+    const m = (t.dateRaw || '').slice(0, 7);
+    if (m && t.realPL !== 0) monthly[m] = (monthly[m] || 0) + t.realPL;
+  }
+  const months = Object.keys(monthly).sort();
+
+  // ── per-underlying cards ──
+  const sortedUls = Object.keys(byUl).sort((a, b) => Math.abs(byUl[b].pl) - Math.abs(byUl[a].pl));
+
+  const ulCards = sortedUls.map(ul => {
+    const d = byUl[ul];
+    const allTrades = [
+      ...d.optTrades.map(t => ({ ...t, _type: 'option' })),
+      ...d.assignTrades.map(t => ({ ...t, _type: 'assign' }))
+    ].sort((a, b) => (a.dateRaw || '').localeCompare(b.dateRaw || ''));
+
+    const tradeRowsHtml = allTrades.map(t => {
+      const isBuy  = t.qty > 0;
+      const isOpt  = t._type === 'option';
+      const typeLabel = isOpt
+        ? (isBuy ? 'BUY' : 'SELL')
+        : (isBuy ? 'ASSIGN' : 'SELL');
+      const badgeCls = isOpt
+        ? (isBuy ? 'money' : 'trade')
+        : (isBuy ? 'expired' : 'closed');
+      return `<tr>
+        <td>${(t.dateRaw || '').slice(0, 10)}</td>
+        <td><span class="badge ${badgeCls}">${typeLabel}</span></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.symbol}">${t.symbol}</td>
+        <td class="mono">${Math.abs(t.qty)}</td>
+        <td class="mono">${t.tPrice > 0 ? '$' + t.tPrice.toFixed(2) : '—'}</td>
+        <td class="${t.proceeds >= 0 ? 'pos' : 'neg'}">${fmt(t.proceeds)}</td>
+        <td class="neg">${fmt(t.comm)}</td>
+        <td class="${t.realPL > 0 ? 'pos' : t.realPL < 0 ? 'neg' : ''}">
+          ${t.realPL !== 0 ? (t.realPL > 0 ? '+' : '') + fmt(t.realPL) : '—'}
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div class="inv-sym-card ${d.pl >= 0 ? '' : 'inv-sym-loss'}" id="opt-ul-${ul}">
+        <div class="inv-sym-header" onclick="toggleOptUl('${ul}')">
+          <div class="inv-sym-left">
+            <span class="badge ${d.pl >= 0 ? 'open' : 'closed'}" style="font-size:12px;padding:3px 8px">${ul}</span>
+            <div class="inv-sym-meta">
+              <span>${d.optTrades.length} contracts</span>
+              ${d.assignTrades.length ? `<span class="inv-sep">·</span><span>${d.assignTrades.length} assignment${d.assignTrades.length > 1 ? 's' : ''}</span>` : ''}
+            </div>
+          </div>
+          <div class="inv-sym-right">
+            <div class="inv-stat">
+              <span class="inv-stat-label">Realized P&L</span>
+              <span class="inv-stat-val ${d.pl >= 0 ? 'pos' : 'neg'}">${d.pl > 0 ? '+' : ''}${fmt(d.pl)}</span>
+            </div>
+            <div class="inv-stat">
+              <span class="inv-stat-label">Comm</span>
+              <span class="inv-stat-val neg">${fmt(d.comm)}</span>
+            </div>
+            <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
+          </div>
+        </div>
+        <div class="inv-sym-body">
+          <div class="tbl-wrap" style="margin:10px 14px 14px">
+            <table>
+              <thead><tr>
+                <th>Date</th><th>Type</th><th>Contract / Symbol</th><th>Qty</th>
+                <th>Price</th><th>Proceeds</th><th>Comm</th><th>Realized P&L</th>
+              </tr></thead>
+              <tbody>${tradeRowsHtml}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = importHtml + `
+    <div class="section-metrics">
+      <div class="metric"><div class="label">Total Realized P&L</div>
+        <div class="value ${totalPL >= 0 ? 'pos' : 'neg'}">${totalPL > 0 ? '+' : ''}${fmt(totalPL)}</div></div>
+      <div class="metric"><div class="label">Underlyings</div><div class="value">${Object.keys(byUl).length}</div></div>
+      <div class="metric"><div class="label">Option Trades</div><div class="value">${totalContracts}</div></div>
+      <div class="metric"><div class="label">Winners / Losers</div>
+        <div class="value"><span class="pos">${winners}</span> / <span class="neg">${losers}</span></div></div>
+      <div class="metric"><div class="label">Total Comm</div><div class="value neg">${fmt(totalComm)}</div></div>
+      <div class="metric"><div class="label">Assignments</div><div class="value">${assignStock.length}</div></div>
+    </div>
+
+    <div class="chart-card">
+      <h3>Monthly Options P&L</h3>
+      <div style="position:relative;height:160px">
+        <canvas id="optMonthChart" role="img" aria-label="Monthly options P&L chart"></canvas>
+      </div>
+    </div>
+
+    <div class="dep-section">
+      <div class="dep-section-header">
+        <i class="ti ti-chart-candle" aria-hidden="true"></i> By Underlying
+        <span class="dep-count">${Object.keys(byUl).length} underlyings</span>
+      </div>
+      <div class="inv-holdings">${ulCards}</div>
+    </div>`;
+
+  attachIbFileInput();
+
+  requestAnimationFrame(() => {
+    const canvas = el('optMonthChart');
+    if (!canvas || !window.Chart) return;
+    const vals = months.map(m => +monthly[m].toFixed(2));
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: months.map(m => {
+          const [y, mo] = m.split('-');
+          return new Date(y, mo - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+        }),
+        datasets: [{ label: 'P&L', data: vals,
+          backgroundColor: vals.map(v => v >= 0 ? 'rgba(29,158,117,0.72)' : 'rgba(216,90,48,0.72)'),
+          borderRadius: 3, borderSkipped: false }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67', autoSkip: false, maxRotation: 45 },
+               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } },
+          y: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67',
+                         callback: v => (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString() },
+               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } }
+        }
+      }
+    });
+  });
+}
+
+window.toggleOptUl = function(ul) {
+  const card = el(`opt-ul-${ul}`);
+  if (card) card.classList.toggle('inv-expanded');
+};
+
 // ── Investing tab ──────────────────────────────────────────────────────────
 function renderInvesting(container) {
   const { trades, openPositions, dividends } = ibData;
@@ -996,7 +1203,7 @@ window.toggleInvSym = function(sym) {
 
 window.clearIbData = async function() {
   if (!confirm('Clear all IB investing data? This will also delete ib.json on GitHub.')) return;
-  ibData = { trades: [], openPositions: {}, dividends: [] };
+  ibData = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [] };
   if (ghToken) {
     try { await ghPutIb(ibData); } catch(e) { console.warn('Could not clear ib.json:', e); }
   }
@@ -1020,30 +1227,40 @@ async function mergeAndCommitIb(csvText) {
   const sbar = el('ib-status');
   const show = msg => { if (sbar) { sbar.textContent = msg; sbar.style.display = 'block'; } };
 
-  const { trades: newTrades, positions: newPositions, dividends: newDivs } = parseIbCSV(csvText);
-  if (newTrades.length === 0 && Object.keys(newPositions).length === 0) {
-    show('⚠️ No stock trade data found. Make sure you exported the full IB Activity Statement CSV.');
+  const { trades: newTrades, positions: newPositions, dividends: newDivs,
+          optionTrades: newOpts, assignmentStocks: newAssigns } = parseIbCSV(csvText);
+
+  const ibKey = t => `${t.symbol}|${t.dateRaw}|${t.qty}|${t.tPrice}`;
+  const existingStockKeys  = new Set((ibData.trades || []).map(ibKey));
+  const existingOptKeys    = new Set((ibData.optionTrades || []).map(ibKey));
+  const existingAssgnKeys  = new Set((ibData.assignmentStocks || []).map(ibKey));
+
+  const toAddStocks  = newTrades.filter(t => !existingStockKeys.has(ibKey(t)));
+  const toAddOpts    = newOpts.filter(t => !existingOptKeys.has(ibKey(t)));
+  const toAddAssigns = newAssigns.filter(t => !existingAssgnKeys.has(ibKey(t)));
+
+  const totalNew = toAddStocks.length + toAddOpts.length + toAddAssigns.length;
+  if (totalNew === 0 && Object.keys(newPositions).length === 0) {
+    show('⚠️ No new data found — everything already imported.');
     return;
   }
 
-  const ibKey = t => `${t.symbol}|${t.dateRaw}|${t.qty}|${t.tPrice}`;
-  const existingKeys = new Set(ibData.trades.map(ibKey));
-  const toAdd = newTrades.filter(t => !existingKeys.has(ibKey(t)));
-
   const merged = {
-    trades:        [...ibData.trades, ...toAdd],
-    openPositions: { ...ibData.openPositions, ...newPositions },
-    dividends:     [...ibData.dividends,
-                    ...newDivs.filter(d => !ibData.dividends.some(x => x.dateRaw === d.dateRaw && x.desc === d.desc))]
+    trades:           [...(ibData.trades || []), ...toAddStocks],
+    openPositions:    { ...(ibData.openPositions || {}), ...newPositions },
+    dividends:        [...(ibData.dividends || []),
+                       ...newDivs.filter(d => !(ibData.dividends || []).some(x => x.dateRaw === d.dateRaw && x.desc === d.desc))],
+    optionTrades:     [...(ibData.optionTrades || []), ...toAddOpts],
+    assignmentStocks: [...(ibData.assignmentStocks || []), ...toAddAssigns],
   };
 
-  show(`Saving ${toAdd.length} new trades to GitHub…`);
+  show(`Saving ${totalNew} new rows to GitHub…`);
   const doSave = async () => {
     try {
       await ghPutIb(merged);
-      show(`✓ ${toAdd.length} new trades added · ${Object.keys(newPositions).length} positions updated`);
-      setTimeout(() => { if (sbar) sbar.style.display = 'none'; }, 4000);
-      renderInvesting(el('tabContent'));
+      show(`✓ ${toAddStocks.length} stock · ${toAddOpts.length} option · ${toAddAssigns.length} assignment trades added`);
+      setTimeout(() => { if (sbar) sbar.style.display = 'none'; }, 5000);
+      renderTabContent();
     } catch(e) {
       show(`Error: ${e.message}`);
     }
@@ -1056,6 +1273,7 @@ async function mergeAndCommitIb(csvText) {
 function parseIbCSV(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const newTrades = [], newPositions = {}, newDivs = [];
+  const newOptionTrades = [], newAssignmentStocks = [];
   let section = '';
 
   for (const line of lines) {
@@ -1066,47 +1284,60 @@ function parseIbCSV(text) {
 
     if (second === 'Header') { section = first.toLowerCase(); continue; }
 
-    // ── stock trades ──
     if (section === 'trades' && first === 'Trades' && second === 'Data') {
+      if ((cols[2] || '').trim() !== 'Order') continue;
       if (cols.length < 12) continue;
-      const assetCat = (cols[3] || '').trim();
-      if (!assetCat.toLowerCase().includes('stock')) continue;
+      const cat     = (cols[3] || '').trim();
       const symbol  = (cols[5] || '').trim();
       if (!symbol || symbol === 'Symbol') continue;
       const dateRaw = (cols[6] || '').trim();
-      const qty     = parseFloat(cols[7]) || 0;
-      const tPrice  = parseFloat(cols[8]) || 0;
-      const proceeds = parseFloat((cols[10] || '').replace(/,/g, '')) || 0;
-      const comm    = parseFloat((cols[11] || '').replace(/,/g, '')) || 0;
-      const realPL  = parseFloat((cols[13] || '').replace(/,/g, '')) || 0;
-      if (!symbol || qty === 0) continue;
-      newTrades.push({ symbol, dateRaw, qty, tPrice, proceeds, comm, realPL });
+      const qty     = safeFloat(cols[7]);
+      const tPrice  = safeFloat(cols[8]);
+      const proceeds = safeFloat(cols[10]);
+      const comm    = safeFloat(cols[11]);
+      const realPL  = safeFloat(cols[13]);
+      const code    = (cols[cols.length - 1] || '').trim();
+
+      if (cat.includes('Option') || (cat.includes('Future') && symbol.includes(' '))) {
+        newOptionTrades.push({ symbol, dateRaw, qty, tPrice, proceeds, comm, realPL, code, cat });
+      } else if (cat.includes('Stock')) {
+        const codeParts = code.split(';');
+        if (codeParts.includes('A')) {
+          newAssignmentStocks.push({ symbol, dateRaw, qty, tPrice, proceeds, comm, realPL, code });
+        } else {
+          newTrades.push({ symbol, dateRaw, qty, tPrice, proceeds, comm, realPL });
+        }
+      }
     }
 
-    // ── open positions ──
     if (section === 'open positions' && first === 'Open Positions' && second === 'Data') {
       if (cols.length < 11) continue;
       const symbol     = (cols[5] || '').trim();
-      const qty        = parseFloat(cols[6]) || 0;
-      const closePrice = parseFloat(cols[10]) || 0;
-      const mktValue   = parseFloat((cols[11] || '').replace(/,/g, '')) || 0;
-      const unrealPL   = parseFloat((cols[12] || '').replace(/,/g, '')) || 0;
+      const qty        = safeFloat(cols[6]);
+      const closePrice = safeFloat(cols[10]);
+      const mktValue   = safeFloat(cols[11]);
+      const unrealPL   = safeFloat(cols[12]);
       if (!symbol || qty === 0) continue;
       newPositions[symbol] = { qty, closePrice, mktValue, unrealPL };
     }
 
-    // ── dividends ──
     if (section === 'dividends' && first === 'Dividends' && second === 'Data') {
       if (cols.length < 6) continue;
       const dateRaw = (cols[3] || '').trim();
       const desc    = (cols[4] || '').trim();
-      const amount  = parseFloat((cols[5] || '').replace(/,/g, '')) || 0;
+      const amount  = safeFloat(cols[5]);
       if (amount > 0) newDivs.push({ dateRaw, desc, amount });
     }
   }
 
-  return { trades: newTrades, positions: newPositions, dividends: newDivs };
+  return { trades: newTrades, positions: newPositions, dividends: newDivs,
+           optionTrades: newOptionTrades, assignmentStocks: newAssignmentStocks };
 }
+
+function safeFloat(s) {
+  try { return parseFloat(String(s || '').replace(/,/g, '')) || 0; } catch(_) { return 0; }
+}
+
 
 function parseIbCSVLine(line) {
   const result = [];
