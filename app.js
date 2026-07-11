@@ -960,6 +960,86 @@ function renderOptChart() {
   });
 }
 
+// ── Live price fetcher ─────────────────────────────────────────────────────
+// SPYL is London-listed (USD-quoted on IB) — Yahoo Finance uses SPYL.L in GBP,
+// so we fetch it separately and use the IB cost basis for P&L estimation.
+const YF_MAP = { DGRO:'DGRO', FBTC:'FBTC', QQQM:'QQQM', SCHD:'SCHD', SMH:'SMH', VGT:'VGT' };
+
+async function fetchAndUpdateLivePrices(tickers, openPositions) {
+  try {
+    const syms = tickers.filter(s => YF_MAP[s]).map(s => YF_MAP[s]);
+    if (!syms.length) return;
+
+    // Yahoo Finance v7 quote endpoint — works from browser on most networks
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms.join(',')}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const quotes = data?.quoteResponse?.result || [];
+    if (!quotes.length) throw new Error('No quotes returned');
+
+    // Build price map
+    const livePrices = {};
+    for (const q of quotes) livePrices[q.symbol] = q.regularMarketPrice;
+
+    // Update each ticker card in the DOM
+    let totalLiveMkt = 0, totalLiveUnreal = 0;
+    for (const sym of tickers) {
+      const price = livePrices[YF_MAP[sym]];
+      const pos   = openPositions[sym];
+      if (!price || !pos) continue;
+      const mktVal  = price * pos.qty;
+      const unrealPL = mktVal - pos.costBasis;
+      const pct      = pos.costBasis > 0 ? ((unrealPL / pos.costBasis) * 100).toFixed(1) : 0;
+      totalLiveMkt   += mktVal;
+      totalLiveUnreal += unrealPL;
+
+      // Update the card stats
+      const card = el(`inv-sym-${sym}`);
+      if (!card) continue;
+      const stats = card.querySelectorAll('.inv-stat');
+      // stats order: Amount Invested, Mkt Value, Unreal P&L, Comm
+      if (stats[1]) stats[1].querySelector('.inv-stat-val').textContent = fmt(mktVal);
+      if (stats[2]) {
+        const v = stats[2].querySelector('.inv-stat-val');
+        v.textContent = `${unrealPL > 0 ? '+' : ''}${fmt(unrealPL)} (${pct}%)`;
+        v.className   = `inv-stat-val ${unrealPL >= 0 ? 'pos' : 'neg'}`;
+      }
+      // Update avg cost with live price
+      const meta = card.querySelector('.inv-sym-meta');
+      if (meta) {
+        const spans = meta.querySelectorAll('span');
+        // Add live price badge after the last span
+        const existing = meta.querySelector('.live-price');
+        if (!existing) {
+          const badge = document.createElement('span');
+          badge.className = 'live-price badge open';
+          badge.style.cssText = 'font-size:10px;padding:2px 5px;margin-left:4px';
+          badge.textContent = `$${price.toFixed(2)} live`;
+          meta.appendChild(badge);
+        } else {
+          existing.textContent = `$${price.toFixed(2)} live`;
+        }
+      }
+    }
+
+    // Update summary metrics
+    const summaryMetrics = document.querySelectorAll('.section-metrics .metric');
+    for (const m of summaryMetrics) {
+      const label = m.querySelector('.label')?.textContent || '';
+      if (label === 'Market Value') m.querySelector('.value').textContent = fmt(totalLiveMkt);
+      if (label === 'Unrealised P&L') {
+        const v = m.querySelector('.value');
+        v.textContent = `${totalLiveUnreal > 0 ? '+' : ''}${fmt(totalLiveUnreal)}`;
+        v.className   = `value ${totalLiveUnreal >= 0 ? 'pos' : 'neg'}`;
+      }
+    }
+  } catch(e) {
+    // Silently fall back to CSV prices — no action needed
+    console.warn('Live price fetch failed, using CSV prices:', e.message);
+  }
+}
+
 // ── Investing tab ──────────────────────────────────────────────────────────
 function renderInvesting(container) {
   const { trades, openPositions, dividends, sgdDeposits, forexTrades, corporateActions } = ibData;
@@ -1098,15 +1178,6 @@ function renderInvesting(container) {
       </div>`;
   }).filter(Boolean).join('');
 
-  // ── monthly spend chart data ──
-  const monthly = {};
-  for (const t of trades) {
-    if (t.qty <= 0) continue;
-    const m = (t.dateRaw || '').slice(0, 7);
-    if (m) monthly[m] = (monthly[m] || 0) + Math.abs(t.proceeds);
-  }
-  const months = Object.keys(monthly).sort();
-
   container.innerHTML = importHtml + `
 
     <!-- ── SGD Deposits ── -->
@@ -1155,14 +1226,6 @@ function renderInvesting(container) {
       <div class="metric"><div class="label">Dividends Rcvd</div><div class="value pos">${fmt(totalDiv)}</div></div>
     </div>
 
-    <!-- ── Monthly chart ── -->
-    <div class="chart-card">
-      <h3>Monthly Investment (USD)</h3>
-      <div style="position:relative;height:160px">
-        <canvas id="ibMonthChart" role="img" aria-label="Monthly investment bar chart"></canvas>
-      </div>
-    </div>
-
     <!-- ── Per-ticker holdings ── -->
     <div class="dep-section">
       <div class="dep-section-header">
@@ -1175,36 +1238,8 @@ function renderInvesting(container) {
     ${buildOptionsSection()}`;
 
   attachIbFileInput();
-
-  requestAnimationFrame(() => {
-    const canvas = el('ibMonthChart');
-    if (!canvas || !window.Chart) return;
-    const vals = months.map(m => +monthly[m].toFixed(2));
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: months.map(m => {
-          const [y, mo] = m.split('-');
-          return new Date(y, mo - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
-        }),
-        datasets: [{ label: 'Invested', data: vals,
-          backgroundColor: 'rgba(29,158,117,0.72)', borderRadius: 3, borderSkipped: false }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67', autoSkip: false, maxRotation: 45 },
-               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } },
-          y: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67',
-                         callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v) },
-               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } }
-        }
-      }
-    });
-    renderOptChart();
-  });
+  requestAnimationFrame(() => { renderOptChart(); });
+  fetchAndUpdateLivePrices(CURRENT_TICKERS, openPositions);
 }
 
 window.toggleInvSym = function(sym) {
