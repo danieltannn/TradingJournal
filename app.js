@@ -9,10 +9,11 @@ const GH_SGD_FILEPATH = 'sgd.json';
 const GH_IB_FILEPATH  = 'ib.json';
 
 // ── State ──────────────────────────────────────────────────────────────────
-let allData   = [];
-let processed = null;
-let activeTab = 0;
-let pages     = {};
+let allData    = [];
+let processed  = null;
+let activeTab  = 0;
+let activeMode = 'trading'; // 'trading' | 'investing'
+let pages      = {};
 let ghToken    = localStorage.getItem('gh_token') || '';
 let ghFileSha  = null; // needed by GitHub API to update an existing file
 let sgdData    = [];   // SGD deposit records
@@ -25,7 +26,6 @@ const TABS = [
   { label: 'Deposits',   icon: 'ti-wallet' },
   { label: 'Trades',     icon: 'ti-arrows-exchange' },
   { label: 'All Ledger', icon: 'ti-list' },
-  { label: 'Investing',  icon: 'ti-trending-up' },
 ];
 
 // ── Utility ────────────────────────────────────────────────────────────────
@@ -382,10 +382,47 @@ function processData(rows) {
 function showDashboard() {
   el('uploadZone').hidden = true;
   el('dashboard').hidden  = false;
-  renderMetrics();
-  renderTabs();
+  renderModeBar();
+  renderForMode();
+}
+
+function renderModeBar() {
+  let bar = el('modeBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'modeBar';
+    bar.className = 'mode-bar';
+    el('dashboard').insertBefore(bar, el('dashboard').firstChild);
+  }
+  bar.innerHTML = `
+    <button class="mode-btn ${activeMode === 'trading'   ? 'active' : ''}" onclick="switchMode('trading')">
+      <i class="ti ti-arrows-exchange" aria-hidden="true"></i> Trading
+    </button>
+    <button class="mode-btn ${activeMode === 'investing' ? 'active' : ''}" onclick="switchMode('investing')">
+      <i class="ti ti-trending-up" aria-hidden="true"></i> Investing
+    </button>`;
+}
+
+function renderForMode() {
+  const metricsRow = el('metricsRow');
+  const tabBar     = el('tabBar');
+  if (activeMode === 'trading') {
+    metricsRow.style.display = '';
+    tabBar.style.display     = '';
+    renderMetrics();
+    renderTabs();
+  } else {
+    metricsRow.style.display = 'none';
+    tabBar.style.display     = 'none';
+  }
   renderTabContent();
 }
+
+window.switchMode = function(mode) {
+  activeMode = mode;
+  renderModeBar();
+  renderForMode();
+};
 
 // ── Metrics ────────────────────────────────────────────────────────────────
 function renderMetrics() {
@@ -416,7 +453,11 @@ function renderTabs() {
 function switchTab(i) { activeTab = i; renderTabs(); renderTabContent(); }
 window.switchTab = switchTab;
 function renderTabContent() {
-  [renderSummary, renderDeposits, renderTrades, renderAll, renderInvesting][activeTab](el('tabContent'));
+  if (activeMode === 'investing') {
+    renderInvesting(el('tabContent'));
+  } else {
+    [renderSummary, renderDeposits, renderTrades, renderAll][activeTab](el('tabContent'));
+  }
 }
 
 // ── Pagination ─────────────────────────────────────────────────────────────
