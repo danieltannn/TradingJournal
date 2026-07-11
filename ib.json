@@ -935,50 +935,473 @@
       "proceeds": -493.992598,
       "comm": -0.3819274,
       "realPL": 0
+    },
+    {
+      "symbol": "DGRO",
+      "dateRaw": "2026-03-13, 11:09:59",
+      "qty": 1.3694,
+      "tPrice": 70.83,
+      "proceeds": -96.994602,
+      "comm": -0.38186093,
+      "realPL": 0
+    },
+    {
+      "symbol": "DGRO",
+      "dateRaw": "2026-03-23, 09:34:11",
+      "qty": 0.5201,
+      "tPrice": 69.65,
+      "proceeds": -36.224965,
+      "comm": -0.03962761,
+      "realPL": 0
+    },
+    {
+      "symbol": "DGRO",
+      "dateRaw": "2026-03-26, 12:24:33",
+      "qty": 1.6596,
+      "tPrice": 69.895000301,
+      "proceeds": -115.9977425,
+      "comm": -0.38214219,
+      "realPL": 0
+    },
+    {
+      "symbol": "DGRO",
+      "dateRaw": "2026-04-24, 12:25:42",
+      "qty": 1.3747,
+      "tPrice": 72.738637157,
+      "proceeds": -99.9938045,
+      "comm": -0.38208008,
+      "realPL": 0
+    },
+    {
+      "symbol": "DGRO",
+      "dateRaw": "2026-05-07, 09:30:00",
+      "qty": 1.2782,
+      "tPrice": 73.538705993,
+      "proceeds": -93.997174,
+      "comm": -0.382717225,
+      "realPL": 0
+    },
+    {
+      "symbol": "DGRO",
+      "dateRaw": "2026-06-10, 11:33:55",
+      "qty": 1.2899,
+      "tPrice": 75.198449492,
+      "proceeds": -96.99848,
+      "comm": -0.38206582,
+      "realPL": 0
+    },
+    {
+      "symbol": "DGRO",
+      "dateRaw": "2026-06-22, 09:32:21",
+      "qty": 0.5009,
+      "tPrice": 75.06,
+      "proceeds": -37.597554,
+      "comm": -0.041122291,
+      "realPL": 0
+    },
+    {
+      "symbol": "FBTC",
+      "dateRaw": "2026-03-13, 11:08:36",
+      "qty": 1.5323,
+      "tPrice": 63.3,
+      "proceeds": -96.99459,
+      "comm": -0.37862644,
+      "realPL": 0
+    },
+    {
+      "symbol": "FBTC",
+      "dateRaw": "2026-03-26, 12:26:14",
+      "qty": 1.9331,
+      "tPrice": 60.005173038,
+      "proceeds": -115.996,
+      "comm": -0.38045782,
+      "realPL": 0
+    },
+    {
+      "symbol": "FBTC",
+      "dateRaw": "2026-04-24, 12:24:24",
+      "qty": 1.4035,
+      "tPrice": 67.686437478,
+      "proceeds": -94.997915,
+      "comm": -0.38208636,
+      "realPL": 0
+    },
+    {
+      "symbol": "FBTC",
+      "dateRaw": "2026-05-07, 09:30:00",
+      "qty": 1.3333,
+      "tPrice": 70.50000075,
+      "proceeds": -93.997651,
+      "comm": -0.38349242,
+      "realPL": 0
+    },
+    {
+      "symbol": "FBTC",
+      "dateRaw": "2026-06-10, 11:35:02",
+      "qty": 1.7897,
+      "tPrice": 54.197206236,
+      "proceeds": -96.99674,
+      "comm": -0.382176409,
+      "realPL": 0
+    },
+    {
+      "symbol": "QQQM",
+      "dateRaw": "2026-03-13, 11:09:43",
+      "qty": 1.984,
+      "tPrice": 245.710604435,
+      "proceeds": -487.4898392,
+      "comm": -0.38221291,
+      "realPL": 0
+    },
+    {
+      "symbol": "QQQM",
+      "dateRaw": "2026-03-26, 12:24:17",
+      "qty": 2.4426,
+      "tPrice": 238.677666421,
+      "proceeds": -582.994068,
+      "comm": -0.38231289,
+      "realPL": 0
+    },
+    {
+      "symbol": "QQQM",
+      "dateRaw": "2026-03-30, 09:33:46",
+      "qty": 0.1179,
+      "tPrice": 233.49,
+      "proceeds": -27.528471,
+      "comm": -0.030053794,
+      "realPL": 0
+    },
+    {
+      "symbol": "QQQM",
+      "dateRaw": "2026-04-24, 12:25:43",
+      "qty": 1.8316,
+      "tPrice": 272.98,
+      "proceeds": -499.990168,
+      "comm": -0.38076269,
+      "realPL": 0
+    },
+    {
+      "symbol": "QQQM",
+      "dateRaw": "2026-05-07, 09:30:01",
+      "qty": 1.715,
+      "tPrice": 286.874137609,
+      "proceeds": -491.989146,
+      "comm": -0.383794875,
+      "realPL": 0
+    },
+    {
+      "symbol": "QQQM",
+      "dateRaw": "2026-06-10, 11:32:41",
+      "qty": 1.6954,
+      "tPrice": 288.415254217,
+      "proceeds": -488.979222,
+      "comm": -0.382155536,
+      "realPL": 0
+    },
+    {
+      "symbol": "QQQM",
+      "dateRaw": "2026-06-29, 09:38:42",
+      "qty": 0.1071,
+      "tPrice": 294.04,
+      "proceeds": -31.491684,
+      "comm": -0.034374862,
+      "realPL": 0
+    },
+    {
+      "symbol": "SCHD",
+      "dateRaw": "2026-03-13, 11:10:12",
+      "qty": 6.3229,
+      "tPrice": 30.839811047,
+      "proceeds": -194.99704127,
+      "comm": -0.38315879,
+      "realPL": 0
+    },
+    {
+      "symbol": "SCHD",
+      "dateRaw": "2026-03-26, 12:24:49",
+      "qty": 7.5871,
+      "tPrice": 30.709806547,
+      "proceeds": -232.99837325,
+      "comm": -0.38343439,
+      "realPL": 0
+    },
+    {
+      "symbol": "SCHD",
+      "dateRaw": "2026-03-31, 09:34:12",
+      "qty": 2.2335,
+      "tPrice": 30.7,
+      "proceeds": -68.56845,
+      "comm": -0.075281448,
+      "realPL": 0
+    },
+    {
+      "symbol": "SCHD",
+      "dateRaw": "2026-04-24, 12:26:00",
+      "qty": 6.4083,
+      "tPrice": 31.209135262,
+      "proceeds": -199.9975015,
+      "comm": -0.38639291,
+      "realPL": 0
+    },
+    {
+      "symbol": "SCHD",
+      "dateRaw": "2026-05-07, 09:30:00",
+      "qty": 6.1568,
+      "tPrice": 31.509490644,
+      "proceeds": -193.997632,
+      "comm": -0.38706671,
+      "realPL": 0
+    },
+    {
+      "symbol": "SCHD",
+      "dateRaw": "2026-06-10, 11:33:21",
+      "qty": 6.0003,
+      "tPrice": 32.4980001,
+      "proceeds": -194.99775,
+      "comm": -0.383108091,
+      "realPL": 0
+    },
+    {
+      "symbol": "SCHD",
+      "dateRaw": "2026-06-30, 09:34:20",
+      "qty": 2.2699,
+      "tPrice": 31.9,
+      "proceeds": -72.40981,
+      "comm": -0.079486961,
+      "realPL": 0
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-03-13, 11:09:13",
+      "qty": 97,
+      "tPrice": 390.5,
+      "proceeds": -37878.5,
+      "comm": -0.2698334,
+      "realPL": 0
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-03-13, 11:12:49",
+      "qty": -97,
+      "tPrice": 391.325,
+      "proceeds": 37958.525,
+      "comm": -0.42354375,
+      "realPL": 2704.79381
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-03-13, 11:13:26",
+      "qty": 0.248,
+      "tPrice": 391.08,
+      "proceeds": -96.98784,
+      "comm": -0.38183447,
+      "realPL": 0
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-03-13, 11:15:05",
+      "qty": 97,
+      "tPrice": 390.9,
+      "proceeds": -37917.3,
+      "comm": -0.2654774,
+      "realPL": 0
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-03-13, 11:18:23",
+      "qty": -97,
+      "tPrice": 390.5,
+      "proceeds": 37878.5,
+      "comm": -0.28609475,
+      "realPL": -31.728414
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-03-26, 12:25:19",
+      "qty": 0.2996,
+      "tPrice": 387.09,
+      "proceeds": -115.972164,
+      "comm": -0.38184572,
+      "realPL": 0
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-04-24, 12:26:03",
+      "qty": 0.1869,
+      "tPrice": 508.28,
+      "proceeds": -94.997532,
+      "comm": -0.38182115,
+      "realPL": 0
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-05-07, 09:30:03",
+      "qty": 0.1721,
+      "tPrice": 546.029360837,
+      "proceeds": -93.971653,
+      "comm": -0.381818476,
+      "realPL": 0
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-06-10, 11:34:29",
+      "qty": 0.1681,
+      "tPrice": 576.91,
+      "proceeds": -96.978571,
+      "comm": -0.381817594,
+      "realPL": 0
+    },
+    {
+      "symbol": "SPYL",
+      "dateRaw": "2026-03-13, 11:10:32",
+      "qty": 29.6458,
+      "tPrice": 16.444117777,
+      "proceeds": -487.4968268,
+      "comm": -1.853,
+      "realPL": 0
+    },
+    {
+      "symbol": "SPYL",
+      "dateRaw": "2026-03-26, 12:25:13",
+      "qty": 36.2169,
+      "tPrice": 16.097415571,
+      "proceeds": -583.00209,
+      "comm": -1.853,
+      "realPL": 0
+    },
+    {
+      "symbol": "SPYL",
+      "dateRaw": "2026-04-27, 03:01:48",
+      "qty": 28.3199,
+      "tPrice": 17.655384186,
+      "proceeds": -499.9975146,
+      "comm": -1.853,
+      "realPL": 0
+    },
+    {
+      "symbol": "SPYL",
+      "dateRaw": "2026-05-07, 09:09:31",
+      "qty": 27.0449,
+      "tPrice": 18.191922728,
+      "proceeds": -491.998731,
+      "comm": -1.9402,
+      "realPL": 0
+    },
+    {
+      "symbol": "SPYL",
+      "dateRaw": "2026-06-10, 11:35:11",
+      "qty": 27,
+      "tPrice": 18.094,
+      "proceeds": -488.538,
+      "comm": -1.9402,
+      "realPL": 0
+    },
+    {
+      "symbol": "VGT",
+      "dateRaw": "2026-03-13, 11:09:27",
+      "qty": 0.6778,
+      "tPrice": 719.192312939,
+      "proceeds": -487.46854971,
+      "comm": -0.38192816,
+      "realPL": 0
+    },
+    {
+      "symbol": "VGT",
+      "dateRaw": "2026-03-26, 12:24:05",
+      "qty": 0.8262,
+      "tPrice": 705.607105192,
+      "proceeds": -582.97259031,
+      "comm": -0.38196051,
+      "realPL": 0
+    },
+    {
+      "symbol": "VGT",
+      "dateRaw": "2026-03-27, 11:59:47",
+      "qty": 0.0313,
+      "tPrice": 688.98,
+      "proceeds": -21.565074,
+      "comm": -0.023530034,
+      "realPL": 0
+    },
+    {
+      "symbol": "VGT",
+      "dateRaw": "2026-04-24, 12:25:24",
+      "qty": 4.805,
+      "tPrice": 104.057169615,
+      "proceeds": -499.9947,
+      "comm": -0.38282789,
+      "realPL": 0
+    },
+    {
+      "symbol": "VGT",
+      "dateRaw": "2026-05-07, 09:30:00",
+      "qty": 4.4761,
+      "tPrice": 109.91584281,
+      "proceeds": -491.994304,
+      "comm": -0.385386829,
+      "realPL": 0
+    },
+    {
+      "symbol": "VGT",
+      "dateRaw": "2026-06-10, 11:32:21",
+      "qty": 4.3121,
+      "tPrice": 113.400723777,
+      "proceeds": -488.995261,
+      "comm": -0.382734536,
+      "realPL": 0
+    },
+    {
+      "symbol": "VGT",
+      "dateRaw": "2026-06-29, 09:36:21",
+      "qty": 0.2957,
+      "tPrice": 115.25,
+      "proceeds": -34.079425,
+      "comm": -0.03723931,
+      "realPL": 0
     }
   ],
   "openPositions": {
     "DGRO": {
-      "qty": 154.9732,
-      "closePrice": 73.61,
-      "mktValue": 11407.58,
-      "unrealPL": 1464.43467
+      "qty": 162.966,
+      "closePrice": 77.06,
+      "mktValue": 12558.16,
+      "unrealPL": 2035.218727
     },
     "FBTC": {
-      "qty": 6.3407,
-      "closePrice": 58.46,
-      "mktValue": 370.68,
-      "unrealPL": -94.458684
+      "qty": 14.3326,
+      "closePrice": 55.615,
+      "mktValue": 797.11,
+      "unrealPL": -168.91842
     },
     "QQQM": {
-      "qty": 118.0939,
-      "closePrice": 248.51,
-      "mktValue": 29347.52,
-      "unrealPL": 3574.075989
+      "qty": 127.9875,
+      "closePrice": 298.72,
+      "mktValue": 38232.43,
+      "unrealPL": 9846.547722
     },
     "SCHD": {
-      "qty": 374.9942,
-      "closePrice": 31.57,
-      "mktValue": 11838.57,
-      "unrealPL": 1339.440853
+      "qty": 411.973,
+      "closePrice": 32.4,
+      "mktValue": 13347.93,
+      "unrealPL": 1688.756371
     },
     "SMH": {
-      "qty": 19.9312,
-      "closePrice": 410.2,
-      "mktValue": 8175.78,
-      "unrealPL": 3018.130511
+      "qty": 21.0059,
+      "closePrice": 611.03,
+      "mktValue": 12835.24,
+      "unrealPL": 4543.688268
     },
     "SPYL": {
-      "qty": 1726.6803,
-      "closePrice": 16.914,
-      "mktValue": 29205.07,
-      "unrealPL": 3498.745937
+      "qty": 1874.9078,
+      "closePrice": 18.676,
+      "mktValue": 35015.78,
+      "unrealPL": 6748.983374
     },
     "VGT": {
-      "qty": 40.7544,
-      "closePrice": 734.65,
-      "mktValue": 29940.22,
-      "unrealPL": 4171.264606
+      "qty": 352.2065,
+      "closePrice": 118.08,
+      "mktValue": 41588.54,
+      "unrealPL": 13210.539095
     }
   },
   "dividends": [
@@ -1071,6 +1494,46 @@
       "dateRaw": "",
       "desc": "",
       "amount": 769.95
+    },
+    {
+      "dateRaw": "2026-03-20",
+      "desc": "DGRO(US46434V6213) Cash Dividend USD 0.331063 per Share (Ordinary Dividend)",
+      "amount": 51.76
+    },
+    {
+      "dateRaw": "2026-03-26",
+      "desc": "VGT(US92204A7028) Cash Dividend USD 0.7438 per Share (Ordinary Dividend)",
+      "amount": 30.82
+    },
+    {
+      "dateRaw": "2026-03-27",
+      "desc": "QQQM(US46138G6492) Cash Dividend USD 0.32769 per Share (Ordinary Dividend)",
+      "amount": 39.35
+    },
+    {
+      "dateRaw": "2026-03-30",
+      "desc": "SCHD(US8085247976) Cash Dividend USD 0.2569 per Share (Ordinary Dividend)",
+      "amount": 97.96
+    },
+    {
+      "dateRaw": "2026-06-18",
+      "desc": "DGRO(US46434V6213) Cash Dividend USD 0.330603 per Share (Ordinary Dividend)",
+      "amount": 53.71
+    },
+    {
+      "dateRaw": "2026-06-26",
+      "desc": "QQQM(US46138G6492) Cash Dividend USD 0.35215 per Share (Ordinary Dividend)",
+      "amount": 45.03
+    },
+    {
+      "dateRaw": "2026-06-26",
+      "desc": "VGT(US92204A7028) Cash Dividend USD 0.1384 per Share (Ordinary Dividend)",
+      "amount": 48.7
+    },
+    {
+      "dateRaw": "2026-06-29",
+      "desc": "SCHD(US8085247976) Cash Dividend USD 0.2525 per Share (Ordinary Dividend)",
+      "amount": 103.45
     }
   ]
 }
