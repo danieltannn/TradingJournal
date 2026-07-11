@@ -797,3 +797,11 @@ tr:hover td { background: var(--bg-secondary); }
 .inv-sym-card.inv-sym-loss {
   border-left-color: var(--red);
 }
+
+/* Options summary grid inside Investing */
+.opt-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
