@@ -1089,15 +1089,6 @@ function renderInvesting(container) {
       </div>`;
   }).filter(Boolean).join('');
 
-  // ── monthly spend chart data ──
-  const monthly = {};
-  for (const t of trades) {
-    if (t.qty <= 0) continue;
-    const m = (t.dateRaw || '').slice(0, 7);
-    if (m) monthly[m] = (monthly[m] || 0) + Math.abs(t.proceeds);
-  }
-  const months = Object.keys(monthly).sort();
-
   container.innerHTML = importHtml + `
 
     <!-- ── SGD Deposits ── -->
@@ -1146,14 +1137,6 @@ function renderInvesting(container) {
       <div class="metric"><div class="label">Dividends Rcvd</div><div class="value pos">${fmt(totalDiv)}</div></div>
     </div>
 
-    <!-- ── Monthly chart ── -->
-    <div class="chart-card">
-      <h3>Monthly Investment (USD)</h3>
-      <div style="position:relative;height:160px">
-        <canvas id="ibMonthChart" role="img" aria-label="Monthly investment bar chart"></canvas>
-      </div>
-    </div>
-
     <!-- ── Per-ticker holdings ── -->
     <div class="dep-section">
       <div class="dep-section-header">
@@ -1166,36 +1149,7 @@ function renderInvesting(container) {
     ${buildOptionsSection()}`;
 
   attachIbFileInput();
-
-  requestAnimationFrame(() => {
-    const canvas = el('ibMonthChart');
-    if (!canvas || !window.Chart) return;
-    const vals = months.map(m => +monthly[m].toFixed(2));
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: months.map(m => {
-          const [y, mo] = m.split('-');
-          return new Date(y, mo - 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
-        }),
-        datasets: [{ label: 'Invested', data: vals,
-          backgroundColor: 'rgba(29,158,117,0.72)', borderRadius: 3, borderSkipped: false }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67', autoSkip: false, maxRotation: 45 },
-               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } },
-          y: { ticks: { font: { size: 11 }, color: isDark ? '#a0a09b' : '#6b6b67',
-                         callback: v => '$' + (v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v) },
-               grid: { color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)' } }
-        }
-      }
-    });
-    renderOptChart();
-  });
+  requestAnimationFrame(() => { renderOptChart(); });
 }
 
 window.toggleInvSym = function(sym) {
