@@ -757,3 +757,38 @@ tr:hover td { background: var(--bg-secondary); }
   .inv-stat { align-items: flex-start; }
   .inv-sym-meta { font-size: 11px; }
 }
+
+/* ── Mode bar (Trading / Investing switcher) ── */
+.mode-bar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 4px;
+}
+.mode-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  border-radius: calc(var(--radius-lg) - 3px);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.mode-btn .ti { font-size: 15px; }
+.mode-btn:hover { color: var(--text); background: var(--bg-tertiary); }
+.mode-btn.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
