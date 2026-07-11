@@ -1106,23 +1106,34 @@ function renderInvesting(container) {
         <i class="ti ti-cash" aria-hidden="true"></i> SGD Deposits &amp; Withdrawals
         <span class="dep-count">${deps.length} entries</span>
       </div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
         <div class="metric"><div class="label">Total Deposited</div><div class="value pos">${fmtSgd(sgdIn)}</div></div>
         <div class="metric"><div class="label">Total Withdrawn</div><div class="value neg">${fmtSgd(Math.abs(sgdOut))}</div></div>
       </div>
       <div class="metric" style="margin-bottom:12px"><div class="label">Net SGD</div><div class="value">${fmtSgd(sgdNet)}</div></div>
-      <div class="opt-summary-grid" style="margin-bottom:12px">
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
         <div class="metric"><div class="label">Converted → USD</div><div class="value pos">${fmt(usdIn)}</div></div>
         <div class="metric"><div class="label">Withdrawn → USD</div><div class="value neg">${fmt(Math.abs(usdOut))}</div></div>
-        <div class="metric"><div class="label">Net USD (forex)</div><div class="value">${fmt(netUsd)}</div></div>
+      </div>
+      <div class="metric" style="margin-bottom:8px"><div class="label">Net USD (forex)</div><div class="value">${fmt(netUsd)}</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
         <div class="metric"><div class="label">Avg Rate</div><div class="value">${effRate.toFixed(5)} SGD/USD</div></div>
         <div class="metric"><div class="label">Forex Fees (USD)</div><div class="value neg">${fmt(fxComm)}</div></div>
       </div>
-      <div class="tbl-wrap">
-        <table><thead><tr>
-          <th style="width:90px">Date</th><th style="width:100px">Type</th>
-          <th>Description</th><th style="width:110px">Amount</th>
-        </tr></thead><tbody>${sgdRows}</tbody></table>
+
+      <div class="sgd-txn-toggle" onclick="this.classList.toggle('open')">
+        <span><i class="ti ti-list" aria-hidden="true"></i> Show transactions</span>
+        <i class="ti ti-chevron-down" aria-hidden="true"></i>
+      </div>
+      <div class="sgd-txn-body">
+        <div class="tbl-wrap" style="margin-top:8px">
+          <table><thead><tr>
+            <th style="width:90px">Date</th><th style="width:100px">Type</th>
+            <th>Description</th><th style="width:110px">Amount</th>
+          </tr></thead><tbody>${sgdRows}</tbody></table>
+        </div>
       </div>
     </div>
 
