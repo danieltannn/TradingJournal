@@ -652,3 +652,108 @@ tr:hover td { background: var(--bg-secondary); }
   .divider-line { flex: 1; height: 0.5px; width: auto; }
   .trade-divider .ti { transform: rotate(90deg); }
 }
+/* ── Investing tab ── */
+.inv-import-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border: 0.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.inv-import-btn:hover { background: var(--bg-secondary); }
+.inv-import-btn .ti  { font-size: 13px; }
+
+.inv-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border: 0.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.inv-clear-btn:hover { color: var(--red); border-color: var(--red); }
+
+/* Symbol cards */
+.inv-holdings { display: flex; flex-direction: column; gap: 8px; }
+
+.inv-sym-card {
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-left: 3px solid var(--green);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.inv-sym-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-bottom: 0.5px solid transparent;
+  transition: background 0.15s;
+}
+.inv-sym-header:hover { background: var(--bg-tertiary); }
+
+.inv-sym-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.inv-sym-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.inv-sep { color: var(--text-tertiary); }
+
+.inv-sym-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.inv-stat { display: flex; flex-direction: column; align-items: flex-end; }
+.inv-stat-label { font-size: 10.5px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
+.inv-stat-val { font-size: 13px; font-weight: 600; }
+
+.inv-chevron {
+  font-size: 14px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+/* Collapsed by default: body hidden, chevron points right */
+.inv-sym-body { display: none; }
+.inv-sym-card .inv-chevron { transform: rotate(-90deg); }
+
+/* Expanded */
+.inv-sym-card.inv-expanded .inv-sym-body { display: block; }
+.inv-sym-card.inv-expanded .inv-chevron  { transform: rotate(0deg); }
+.inv-sym-card.inv-expanded .inv-sym-header { border-bottom-color: var(--border); }
+
+@media (max-width: 600px) {
+  .inv-sym-right { gap: 10px; }
+  .inv-stat { align-items: flex-start; }
+  .inv-sym-meta { font-size: 11px; }
+}
