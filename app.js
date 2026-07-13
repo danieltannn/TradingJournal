@@ -1197,20 +1197,25 @@ function renderInvesting(container) {
         <span class="dep-count">${deps.length} entries</span>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div class="metric"><div class="label">Total Deposited</div><div class="value pos">${fmtSgd(sgdIn)}</div></div>
-        <div class="metric"><div class="label">Total Withdrawn</div><div class="value neg">${fmtSgd(Math.abs(sgdOut))}</div></div>
-      </div>
-      <div class="metric" style="margin-bottom:12px"><div class="label">Net SGD</div><div class="value">${fmtSgd(sgdNet)}</div></div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div class="metric"><div class="label">Converted → USD</div><div class="value pos">${fmt(usdIn)}</div></div>
-        <div class="metric"><div class="label">Withdrawn → USD</div><div class="value neg">${fmt(Math.abs(usdOut))}</div></div>
-      </div>
-      <div class="metric" style="margin-bottom:8px"><div class="label">Net USD (forex)</div><div class="value">${fmt(netUsd)}</div></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <div class="metric"><div class="label">Avg Rate</div><div class="value">${effRate.toFixed(5)} SGD/USD</div></div>
-        <div class="metric"><div class="label">Forex Fees (USD)</div><div class="value neg">${fmt(fxComm)}</div></div>
+      <div class="sgd-compact">
+        <div class="sgd-row">
+          <span class="sgd-item"><span class="sgd-lbl">Deposited</span><span class="sgd-val pos">${fmtSgd(sgdIn)}</span></span>
+          <span class="sgd-sep">·</span>
+          <span class="sgd-item"><span class="sgd-lbl">Withdrawn</span><span class="sgd-val neg">${fmtSgd(Math.abs(sgdOut))}</span></span>
+          <span class="sgd-sep">·</span>
+          <span class="sgd-item"><span class="sgd-lbl">Net SGD</span><span class="sgd-val">${fmtSgd(sgdNet)}</span></span>
+        </div>
+        <div class="sgd-row">
+          <span class="sgd-item"><span class="sgd-lbl">→ USD</span><span class="sgd-val pos">${fmt(usdIn)}</span></span>
+          <span class="sgd-sep">·</span>
+          <span class="sgd-item"><span class="sgd-lbl">Withdrawn</span><span class="sgd-val neg">${fmt(Math.abs(usdOut))}</span></span>
+          <span class="sgd-sep">·</span>
+          <span class="sgd-item"><span class="sgd-lbl">Net USD</span><span class="sgd-val">${fmt(netUsd)}</span></span>
+          <span class="sgd-sep">·</span>
+          <span class="sgd-item"><span class="sgd-lbl">Rate</span><span class="sgd-val">${effRate.toFixed(4)}</span></span>
+          <span class="sgd-sep">·</span>
+          <span class="sgd-item"><span class="sgd-lbl">Fees</span><span class="sgd-val neg">${fmt(fxComm)}</span></span>
+        </div>
       </div>
 
       <div class="sgd-txn-toggle" onclick="this.classList.toggle('open')">
