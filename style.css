@@ -907,11 +907,9 @@ tr:hover td { background: var(--bg-secondary); }
 .calc-body { display: none; padding: 12px 14px 14px; }
 .calc-section.calc-open .calc-body { display: block; }
 .calc-section.calc-open .calc-toggle .ti-chevron-down { transform: rotate(180deg); }
-
 .calc-input-row {
   display: flex;
   align-items: center;
-  gap: 0;
   border: 0.5px solid var(--border-strong);
   border-radius: var(--radius);
   overflow: hidden;
@@ -925,5 +923,3 @@ tr:hover td { background: var(--bg-secondary); }
   background: var(--bg-secondary);
   border-right: 0.5px solid var(--border);
 }
-#calcInput { border: none !important; border-radius: 0 !important; }
-#calcInput:focus { box-shadow: none; }
