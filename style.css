@@ -856,21 +856,42 @@ tr:hover td { background: var(--bg-secondary); }
 .sgd-val { font-size: 13px; font-weight: 600; color: var(--text); }
 .sgd-val.pos { color: var(--green); }
 .sgd-val.neg { color: var(--red); }
-/* ── Pie chart + holdings side by side ── */
-.pie-and-holdings {
+/* ── Holdings pie card ── */
+.holdings-pie-card {
   display: flex;
-  gap: 16px;
-  align-items: flex-start;
+  align-items: center;
+  gap: 20px;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border);
 }
-.pie-wrap {
-  width: 130px;
+.holdings-pie-card canvas {
+  width: 160px !important;
+  height: 160px !important;
   flex-shrink: 0;
-  padding-top: 4px;
 }
-@media (max-width: 520px) {
-  .pie-and-holdings { flex-direction: column; }
-  .pie-wrap { width: 120px; align-self: center; }
+.pie-legend {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
+.pie-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+}
+.pie-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pie-sym { font-weight: 600; color: var(--text); flex: 1; }
+.pie-pct { color: var(--text-secondary); font-size: 12px; }
 
 /* ── Foldable options section ── */
 .opts-toggle { cursor: pointer; user-select: none; }
@@ -879,6 +900,3 @@ tr:hover td { background: var(--bg-secondary); }
 .opts-body { display: none; }
 .dep-section.opts-open .opts-body { display: block; }
 .dep-section.opts-open .opts-toggle .ti-chevron-down { transform: rotate(180deg); }
-
-/* sgd-grid col-span helper */
-.sgd-cell[style*="grid-column"] { grid-column: 1 / 3; }
