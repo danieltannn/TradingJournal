@@ -898,5 +898,5 @@ tr:hover td { background: var(--bg-secondary); }
 .opts-toggle:hover { background: var(--bg-tertiary); }
 .opts-toggle .ti-chevron-down { transition: transform .2s; }
 .opts-body { display: none; }
-.dep-section.opts-open .opts-body { display: block; }
-.dep-section.opts-open .opts-toggle .ti-chevron-down { transform: rotate(180deg); }
+.opts-section.opts-open .opts-body { display: block; }
+.opts-section.opts-open .opts-toggle .ti-chevron-down { transform: rotate(180deg); }
