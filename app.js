@@ -832,8 +832,8 @@ function buildCalculator() {
         <div class="tbl-wrap" style="margin-top:10px">
           <table>
             <thead><tr>
-              <th>Ticker</th><th>Alloc</th><th>Gross</th>
-              <th>Est. Comm</th><th>Net Buy</th><th>Est. Shares</th>
+              <th>Ticker</th><th>Alloc</th><th>To Invest</th>
+              <th>Est. Comm</th><th>Total Needed</th><th>Est. Shares</th>
             </tr></thead>
             <tbody>${rows}</tbody>
             <tfoot>
@@ -859,24 +859,24 @@ window.runCalc = function(val) {
   let totGross = 0, totComm = 0, totNet = 0;
 
   ALLOC.forEach(({ sym, pct, avgComm }) => {
-    const gross = total * pct / 100;
-    const comm  = total > 0 ? avgComm : 0;
-    const net   = Math.max(0, gross - comm);
-    totGross += gross; totComm += comm; totNet += net;
+    const invest  = total * pct / 100;          // amount going into shares
+    const comm    = total > 0 ? avgComm : 0;    // commission charged on top
+    const needed  = invest + comm;              // total leaving your account
+    totGross += invest; totComm += comm; totNet += needed;
 
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-    set(`calc-amt-${sym}`,  total > 0 ? '$' + gross.toFixed(2) : '—');
-    set(`calc-comm-${sym}`, total > 0 ? '$' + comm.toFixed(2)  : '—');
-    set(`calc-net-${sym}`,  total > 0 ? '$' + net.toFixed(2)   : '—');
+    set(`calc-amt-${sym}`,  total > 0 ? '$' + invest.toFixed(2)  : '—');
+    set(`calc-comm-${sym}`, total > 0 ? '$' + comm.toFixed(2)    : '—');
+    set(`calc-net-${sym}`,  total > 0 ? '$' + needed.toFixed(2)  : '—');
 
-    const shEl  = document.getElementById(`calc-sh-${sym}`);
+    const shEl = document.getElementById(`calc-sh-${sym}`);
     if (shEl) {
       const card      = document.getElementById(`inv-sym-${sym}`);
       const badge     = card?.querySelector('.live-price');
       const livePrice = badge ? parseFloat(badge.textContent.replace('live','').replace('$','').trim()) : 0;
       const pos       = (window._ibOpenPositions || {})[sym];
       const price     = livePrice || pos?.closePrice || 0;
-      shEl.textContent = (total > 0 && price > 0) ? (net / price).toFixed(4) + ' sh' : '—';
+      shEl.textContent = (total > 0 && price > 0) ? (invest / price).toFixed(4) + ' sh' : '—';
     }
   });
 
