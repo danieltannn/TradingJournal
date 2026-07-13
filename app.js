@@ -832,8 +832,8 @@ function buildCalculator() {
         <div class="tbl-wrap" style="margin-top:10px">
           <table>
             <thead><tr>
-              <th>Ticker</th><th>Alloc</th><th>To Invest</th>
-              <th>Est. Comm</th><th>Total Needed</th><th>Est. Shares</th>
+              <th>Ticker</th><th>Alloc</th><th>Allocated</th>
+              <th>Est. Comm</th><th>Into Shares</th><th>Est. Shares</th>
             </tr></thead>
             <tbody>${rows}</tbody>
             <tfoot>
@@ -859,15 +859,15 @@ window.runCalc = function(val) {
   let totGross = 0, totComm = 0, totNet = 0;
 
   ALLOC.forEach(({ sym, pct, avgComm }) => {
-    const invest  = total * pct / 100;          // amount going into shares
-    const comm    = total > 0 ? avgComm : 0;    // commission charged on top
-    const needed  = invest + comm;              // total leaving your account
-    totGross += invest; totComm += comm; totNet += needed;
+    const allocated = total * pct / 100;        // your % of input budget
+    const comm      = total > 0 ? avgComm : 0; // commission taken from allocation
+    const intoShares = Math.max(0, allocated - comm); // what actually buys shares
+    totGross += allocated; totComm += comm; totNet += intoShares;
 
     const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-    set(`calc-amt-${sym}`,  total > 0 ? '$' + invest.toFixed(2)  : '—');
-    set(`calc-comm-${sym}`, total > 0 ? '$' + comm.toFixed(2)    : '—');
-    set(`calc-net-${sym}`,  total > 0 ? '$' + needed.toFixed(2)  : '—');
+    set(`calc-amt-${sym}`,  total > 0 ? '$' + allocated.toFixed(2)   : '—');
+    set(`calc-comm-${sym}`, total > 0 ? '$' + comm.toFixed(2)        : '—');
+    set(`calc-net-${sym}`,  total > 0 ? '$' + intoShares.toFixed(2)  : '—');
 
     const shEl = document.getElementById(`calc-sh-${sym}`);
     if (shEl) {
@@ -876,7 +876,7 @@ window.runCalc = function(val) {
       const livePrice = badge ? parseFloat(badge.textContent.replace('live','').replace('$','').trim()) : 0;
       const pos       = (window._ibOpenPositions || {})[sym];
       const price     = livePrice || pos?.closePrice || 0;
-      shEl.textContent = (total > 0 && price > 0) ? (invest / price).toFixed(4) + ' sh' : '—';
+      shEl.textContent = (total > 0 && price > 0) ? (intoShares / price).toFixed(4) + ' sh' : '—';
     }
   });
 
@@ -884,7 +884,7 @@ window.runCalc = function(val) {
   if (foot) foot.style.display = total > 0 ? 'table-row' : 'none';
   const set = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
   if (total > 0) {
-    set('calc-tot-gross', '$' + totGross.toFixed(2));
+    set('calc-tot-gross', '$' + totGross.toFixed(2));  // = input total
     set('calc-tot-comm',  '$' + totComm.toFixed(2));
     set('calc-tot-net',   '$' + totNet.toFixed(2));
   }
