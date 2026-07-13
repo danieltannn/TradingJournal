@@ -898,27 +898,30 @@ function buildOptionsSection() {
   window._optChartData = { months, monthly };
 
   return `
-    <div class="dep-section">
-      <div class="dep-section-header">
+    <div class="dep-section opts-section">
+      <div class="dep-section-header opts-toggle" onclick="this.closest('.opts-section').classList.toggle('opts-open')">
         <i class="ti ti-chart-candle" aria-hidden="true"></i> Past Options Trading
         <span class="dep-count">${totalContracts} contracts · ${Object.keys(byUl).length} underlyings</span>
+        <i class="ti ti-chevron-down" style="margin-left:auto;font-size:14px;color:var(--text-tertiary)" aria-hidden="true"></i>
       </div>
-      <div class="opt-summary-grid">
-        <div class="metric"><div class="label">Realized P&L</div>
-          <div class="value ${totalPL >= 0 ? 'pos' : 'neg'}">${totalPL > 0 ? '+' : ''}${fmt(totalPL)}</div></div>
-        <div class="metric"><div class="label">Winners / Losers</div>
-          <div class="value"><span class="pos">${winners}</span> / <span class="neg">${losers}</span></div></div>
-        <div class="metric"><div class="label">Commissions</div><div class="value neg">${fmt(totalComm)}</div></div>
-        <div class="metric"><div class="label">Assignments</div>
-          <div class="value">${assignStock.filter(t=>t.qty>0).length}</div></div>
-      </div>
-      <div class="chart-card" style="margin-bottom:12px">
-        <h3>Monthly Options P&L</h3>
-        <div style="position:relative;height:140px">
-          <canvas id="optMonthChart" role="img" aria-label="Monthly options P&L"></canvas>
+      <div class="opts-body">
+        <div class="opt-summary-grid">
+          <div class="metric"><div class="label">Realized P&L</div>
+            <div class="value ${totalPL >= 0 ? 'pos' : 'neg'}">${totalPL > 0 ? '+' : ''}${fmt(totalPL)}</div></div>
+          <div class="metric"><div class="label">Winners / Losers</div>
+            <div class="value"><span class="pos">${winners}</span> / <span class="neg">${losers}</span></div></div>
+          <div class="metric"><div class="label">Commissions</div><div class="value neg">${fmt(totalComm)}</div></div>
+          <div class="metric"><div class="label">Assignments</div>
+            <div class="value">${assignStock.filter(t=>t.qty>0).length}</div></div>
         </div>
+        <div class="chart-card" style="margin-bottom:12px">
+          <h3>Monthly Options P&L</h3>
+          <div style="position:relative;height:140px">
+            <canvas id="optMonthChart" role="img" aria-label="Monthly options P&L"></canvas>
+          </div>
+        </div>
+        <div class="inv-holdings">${ulCards}</div>
       </div>
-      <div class="inv-holdings">${ulCards}</div>
     </div>`;
 }
 
