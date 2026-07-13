@@ -791,6 +791,90 @@ function buildAllTable(q, typeFilter) {
     [{label:'Date',w:'82px'},{label:'Type',w:'90px'},{label:'Sub type',w:'90px'},{label:'Symbol'},{label:'Description',w:'170px'},{label:'Comm',w:'55px'},{label:'Fees',w:'45px'},{label:'Total',w:'80px'}]);
 }
 
+// ── Investment calculator ──────────────────────────────────────────────────
+const ALLOC = [
+  { sym: 'DGRO', pct: 5  },
+  { sym: 'FBTC', pct: 5  },
+  { sym: 'QQQM', pct: 25 },
+  { sym: 'SCHD', pct: 10 },
+  { sym: 'SMH',  pct: 5  },
+  { sym: 'SPYL', pct: 25 },
+  { sym: 'VGT',  pct: 25 },
+];
+
+function buildCalculator() {
+  const rows = ALLOC.map(a => `
+    <tr>
+      <td><span class="badge trade" style="font-size:11px;padding:2px 7px">${a.sym}</span></td>
+      <td class="mono" style="color:var(--text-secondary)">${a.pct}%</td>
+      <td class="pos mono calc-amt" id="calc-${a.sym}">—</td>
+      <td class="mono calc-shares" id="calc-sh-${a.sym}" style="color:var(--text-secondary)">—</td>
+    </tr>`).join('');
+
+  return `
+    <div class="dep-section calc-section">
+      <div class="dep-section-header calc-toggle" onclick="this.closest('.calc-section').classList.toggle('calc-open')">
+        <i class="ti ti-calculator" aria-hidden="true"></i> Investment Calculator
+        <span class="dep-count">DGRO 5% · FBTC 5% · QQQM 25% · SCHD 10% · SMH 5% · SPYL 25% · VGT 25%</span>
+        <i class="ti ti-chevron-down" style="margin-left:auto;font-size:14px;color:var(--text-tertiary)" aria-hidden="true"></i>
+      </div>
+      <div class="calc-body">
+        <div class="calc-input-row">
+          <span class="calc-currency">$</span>
+          <input id="calcInput" type="number" min="0" step="100"
+            placeholder="Enter amount to invest"
+            oninput="runCalc(this.value)"
+            style="flex:1;background:var(--bg);border:0.5px solid var(--border);border-radius:var(--radius);
+                   padding:9px 12px;font-size:15px;color:var(--text);outline:none;
+                   -moz-appearance:textfield">
+        </div>
+        <div class="tbl-wrap" style="margin-top:10px">
+          <table>
+            <thead><tr>
+              <th style="width:70px">Ticker</th>
+              <th style="width:50px">Alloc</th>
+              <th>Amount (USD)</th>
+              <th>Est. Shares</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div id="calc-total-row" style="display:none;margin-top:8px;padding:10px 12px;
+             background:var(--bg-secondary);border-radius:var(--radius);
+             display:flex;justify-content:space-between;align-items:center;font-size:13px">
+          <span style="color:var(--text-secondary)">Total</span>
+          <span id="calc-total" class="pos" style="font-weight:700;font-size:15px"></span>
+        </div>
+      </div>
+    </div>`;
+}
+
+window.runCalc = function(val) {
+  const total = parseFloat(val) || 0;
+  const totEl = document.getElementById('calc-total-row');
+  if (totEl) totEl.style.display = total > 0 ? 'flex' : 'none';
+  const totVal = document.getElementById('calc-total');
+  if (totVal) totVal.textContent = '$' + total.toLocaleString('en-US', { minimumFractionDigits: 2 });
+
+  ALLOC.forEach(({ sym, pct }) => {
+    const amt    = total * pct / 100;
+    const amtEl  = document.getElementById(`calc-${sym}`);
+    const shEl   = document.getElementById(`calc-sh-${sym}`);
+    if (amtEl) amtEl.textContent = total > 0 ? '$' + amt.toFixed(2) : '—';
+
+    // Try to get live price from the badge, fallback to openPositions closePrice
+    if (shEl) {
+      const card     = document.getElementById(`inv-sym-${sym}`);
+      const badge    = card?.querySelector('.live-price');
+      const liveText = badge?.textContent?.replace('live','').replace('$','').trim();
+      const livePrice = liveText ? parseFloat(liveText) : 0;
+      const pos      = (window._ibOpenPositions || {})[sym];
+      const price    = livePrice || pos?.closePrice || 0;
+      shEl.textContent = (total > 0 && price > 0) ? (amt / price).toFixed(4) + ' sh' : '—';
+    }
+  });
+};
+
 // ── Options section (embedded inside Investing) ────────────────────────────
 function buildOptionsSection() {
   const optTrades   = ibData.optionTrades     || [];
@@ -1256,9 +1340,11 @@ function renderInvesting(container) {
       <div class="inv-holdings">${tickerRows}</div>
     </div>
 
+    ${buildCalculator()}
     ${buildOptionsSection()}`;
 
   attachIbFileInput();
+  window._ibOpenPositions = openPositions; // expose for calculator
   requestAnimationFrame(() => {
     renderOptChart();
 
