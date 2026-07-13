@@ -1033,16 +1033,21 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       }
     }
 
-    // Update summary metrics
-    const summaryMetrics = document.querySelectorAll('.section-metrics .metric');
-    for (const m of summaryMetrics) {
-      const label = m.querySelector('.label')?.textContent || '';
-      if (label === 'Market Value') m.querySelector('.value').textContent = fmt(totalLiveMkt);
-      if (label === 'Unrealised P&L') {
-        const v = m.querySelector('.value');
-        v.textContent = `${totalLiveUnreal > 0 ? '+' : ''}${fmt(totalLiveUnreal)}`;
-        v.className   = `value ${totalLiveUnreal >= 0 ? 'pos' : 'neg'}`;
-      }
+    // Update summary grid using IDs
+    const mktEl    = el('sum-mkt');
+    const unrEl    = el('sum-unreal');
+    const retEl    = el('sum-return');
+    const costBasis = Object.values(openPositions).reduce((s, p) => s + (p.costBasis || 0), 0);
+
+    if (mktEl) mktEl.textContent = fmt(totalLiveMkt);
+    if (unrEl) {
+      unrEl.textContent = `${totalLiveUnreal > 0 ? '+' : ''}${fmt(totalLiveUnreal)}`;
+      unrEl.className   = `sgd-val ${totalLiveUnreal >= 0 ? 'pos' : 'neg'}`;
+    }
+    if (retEl && costBasis > 0) {
+      const pct = (totalLiveUnreal / costBasis * 100).toFixed(1);
+      retEl.textContent = `${pct}%`;
+      retEl.className   = `sgd-val ${totalLiveUnreal >= 0 ? 'pos' : 'neg'}`;
     }
   } catch(e) {
     // Silently fall back to CSV prices — no action needed
@@ -1232,11 +1237,11 @@ function renderInvesting(container) {
 
       <div class="sgd-grid" style="margin-bottom:14px">
         <div class="sgd-cell"><div class="sgd-lbl">Amount Invested</div><div class="sgd-val pos">${fmt(totalCostBasis)}</div></div>
-        <div class="sgd-cell"><div class="sgd-lbl">Market Value</div><div class="sgd-val">${fmt(totalMktVal)}</div></div>
-        <div class="sgd-cell"><div class="sgd-lbl">Unrealised P&L</div><div class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal > 0 ? '+' : ''}${fmt(totalUnreal)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Market Value</div><div id="sum-mkt" class="sgd-val">${fmt(totalMktVal)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Unrealised P&L</div><div id="sum-unreal" class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal > 0 ? '+' : ''}${fmt(totalUnreal)}</div></div>
         <div class="sgd-divider"></div>
         <div class="sgd-cell"><div class="sgd-lbl">Dividends Received</div><div class="sgd-val pos">${fmt(totalDiv)}</div></div>
-        <div class="sgd-cell"><div class="sgd-lbl">Return %</div><div class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalCostBasis > 0 ? (totalUnreal/totalCostBasis*100).toFixed(1) : '0.0'}%</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Return %</div><div id="sum-return" class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalCostBasis > 0 ? (totalUnreal/totalCostBasis*100).toFixed(1) : '0.0'}%</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">&nbsp;</div><div class="sgd-val"> </div></div>
       </div>
 
