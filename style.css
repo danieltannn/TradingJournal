@@ -856,3 +856,29 @@ tr:hover td { background: var(--bg-secondary); }
 .sgd-val { font-size: 13px; font-weight: 600; color: var(--text); }
 .sgd-val.pos { color: var(--green); }
 .sgd-val.neg { color: var(--red); }
+/* ── Pie chart + holdings side by side ── */
+.pie-and-holdings {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.pie-wrap {
+  width: 130px;
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+@media (max-width: 520px) {
+  .pie-and-holdings { flex-direction: column; }
+  .pie-wrap { width: 120px; align-self: center; }
+}
+
+/* ── Foldable options section ── */
+.opts-toggle { cursor: pointer; user-select: none; }
+.opts-toggle:hover { background: var(--bg-tertiary); }
+.opts-toggle .ti-chevron-down { transition: transform .2s; }
+.opts-body { display: none; }
+.dep-section.opts-open .opts-body { display: block; }
+.dep-section.opts-open .opts-toggle .ti-chevron-down { transform: rotate(180deg); }
+
+/* sgd-grid col-span helper */
+.sgd-cell[style*="grid-column"] { grid-column: 1 / 3; }
