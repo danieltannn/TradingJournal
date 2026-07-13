@@ -830,18 +830,29 @@ tr:hover td { background: var(--bg-secondary); }
 .sgd-txn-body { display: none; }
 .sgd-txn-toggle.open + .sgd-txn-body { display: block; }
 
-/* ── SGD compact summary rows ── */
-.sgd-compact { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-.sgd-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  font-size: 12.5px;
+/* ── SGD compact grid ── */
+.sgd-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  margin-bottom: 10px;
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
-.sgd-item { display: flex; align-items: baseline; gap: 4px; }
-.sgd-lbl  { color: var(--text-tertiary); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
-.sgd-val  { font-weight: 600; color: var(--text); }
+.sgd-cell {
+  padding: 8px 12px;
+  border-right: 0.5px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
+}
+.sgd-cell:nth-child(3n) { border-right: none; }
+.sgd-divider {
+  grid-column: 1 / -1;
+  height: 0;
+  border-bottom: 0.5px solid var(--border);
+}
+.sgd-lbl { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+.sgd-val { font-size: 13px; font-weight: 600; color: var(--text); }
 .sgd-val.pos { color: var(--green); }
 .sgd-val.neg { color: var(--red); }
-.sgd-sep  { color: var(--text-tertiary); font-size: 11px; }
