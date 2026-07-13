@@ -829,3 +829,19 @@ tr:hover td { background: var(--bg-secondary); }
 
 .sgd-txn-body { display: none; }
 .sgd-txn-toggle.open + .sgd-txn-body { display: block; }
+
+/* ── SGD compact summary rows ── */
+.sgd-compact { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.sgd-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12.5px;
+}
+.sgd-item { display: flex; align-items: baseline; gap: 4px; }
+.sgd-lbl  { color: var(--text-tertiary); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.sgd-val  { font-weight: 600; color: var(--text); }
+.sgd-val.pos { color: var(--green); }
+.sgd-val.neg { color: var(--red); }
+.sgd-sep  { color: var(--text-tertiary); font-size: 11px; }
