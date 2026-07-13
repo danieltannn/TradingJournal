@@ -899,12 +899,10 @@ function buildOptionsSection() {
 
   return `
     <div class="dep-section">
-      <div class="dep-section-header opts-toggle" onclick="this.closest('.dep-section').classList.toggle('opts-open')">
+      <div class="dep-section-header">
         <i class="ti ti-chart-candle" aria-hidden="true"></i> Past Options Trading
         <span class="dep-count">${totalContracts} contracts · ${Object.keys(byUl).length} underlyings</span>
-        <i class="ti ti-chevron-down" style="margin-left:auto;font-size:14px;color:var(--text-tertiary);transition:transform .2s" aria-hidden="true"></i>
       </div>
-      <div class="opts-body">
       <div class="opt-summary-grid">
         <div class="metric"><div class="label">Realized P&L</div>
           <div class="value ${totalPL >= 0 ? 'pos' : 'neg'}">${totalPL > 0 ? '+' : ''}${fmt(totalPL)}</div></div>
@@ -921,7 +919,6 @@ function buildOptionsSection() {
         </div>
       </div>
       <div class="inv-holdings">${ulCards}</div>
-      </div><!-- /opts-body -->
     </div>`;
 }
 
@@ -1226,26 +1223,29 @@ function renderInvesting(container) {
       </div>
     </div>
 
-    <!-- ── Portfolio Summary ── -->
+    <!-- ── Portfolio Summary + Pie ── -->
     <div class="dep-section" style="margin-top:12px">
       <div class="dep-section-header">
         <i class="ti ti-briefcase" aria-hidden="true"></i> Holdings
         <span class="dep-count">${CURRENT_TICKERS.filter(s => openPositions[s]).length} positions</span>
       </div>
-      <div class="sgd-grid" style="margin-bottom:12px">
+
+      <div class="sgd-grid" style="margin-bottom:14px">
         <div class="sgd-cell"><div class="sgd-lbl">Amount Invested</div><div class="sgd-val pos">${fmt(totalCostBasis)}</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Market Value</div><div class="sgd-val">${fmt(totalMktVal)}</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Unrealised P&L</div><div class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal > 0 ? '+' : ''}${fmt(totalUnreal)}</div></div>
         <div class="sgd-divider"></div>
-        <div class="sgd-cell" style="grid-column:1/3"><div class="sgd-lbl">Dividends Received</div><div class="sgd-val pos">${fmt(totalDiv)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Dividends Received</div><div class="sgd-val pos">${fmt(totalDiv)}</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Return %</div><div class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalCostBasis > 0 ? (totalUnreal/totalCostBasis*100).toFixed(1) : '0.0'}%</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">&nbsp;</div><div class="sgd-val"> </div></div>
       </div>
-      <div class="pie-and-holdings">
-        <div class="pie-wrap">
-          <canvas id="holdingsPie" aria-label="Holdings pie chart"></canvas>
-        </div>
-        <div class="inv-holdings" style="flex:1;min-width:0">${tickerRows}</div>
+
+      <div class="holdings-pie-card">
+        <canvas id="holdingsPie" aria-label="Holdings allocation chart"></canvas>
+        <div class="pie-legend" id="pieLegend"></div>
       </div>
+
+      <div class="inv-holdings">${tickerRows}</div>
     </div>
 
     ${buildOptionsSection()}`;
@@ -1253,36 +1253,53 @@ function renderInvesting(container) {
   attachIbFileInput();
   requestAnimationFrame(() => {
     renderOptChart();
+
     // ── Holdings pie chart ──
     const pie = el('holdingsPie');
-    if (pie && window.Chart) {
-      const labels = [], values = [], colors = [
-        '#3fb950','#58a6ff','#f0883e','#bc8cff','#ff7b72','#39d353','#79c0ff'
-      ];
-      CURRENT_TICKERS.forEach((sym, i) => {
-        const pos = openPositions[sym];
-        if (!pos || !pos.costBasis) return;
-        labels.push(sym);
-        values.push(+pos.costBasis.toFixed(2));
-      });
-      new Chart(pie, {
-        type: 'doughnut',
-        data: {
-          labels,
-          datasets: [{ data: values, backgroundColor: colors.slice(0, values.length),
-            borderWidth: 2, borderColor: 'var(--bg-secondary, #1c2430)' }]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: true, cutout: '62%',
-          plugins: {
-            legend: { display: false },
-            tooltip: { callbacks: { label: ctx => {
-              const pct = (ctx.parsed / values.reduce((a,b)=>a+b,0) * 100).toFixed(1);
-              return ` ${ctx.label}: $${ctx.parsed.toLocaleString()} (${pct}%)`;
-            }}}
-          }
+    const legend = el('pieLegend');
+    if (!pie || !window.Chart) return;
+
+    const PIE_COLORS = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#ff7b72','#ffa657','#39d353'];
+    const pieLabels = [], pieValues = [], pieColors = [];
+    const total = CURRENT_TICKERS.reduce((s, sym) => s + (openPositions[sym]?.costBasis || 0), 0);
+
+    CURRENT_TICKERS.forEach((sym, i) => {
+      const pos = openPositions[sym];
+      if (!pos?.costBasis) return;
+      pieLabels.push(sym);
+      pieValues.push(+pos.costBasis.toFixed(2));
+      pieColors.push(PIE_COLORS[i % PIE_COLORS.length]);
+    });
+
+    new Chart(pie, {
+      type: 'doughnut',
+      data: {
+        labels: pieLabels,
+        datasets: [{ data: pieValues, backgroundColor: pieColors,
+          borderWidth: 3, borderColor: '#161b22', hoverOffset: 6 }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: true, cutout: '55%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => {
+            const pct = (ctx.parsed / total * 100).toFixed(1);
+            return ` ${ctx.label}: ${fmt(ctx.parsed)} (${pct}%)`;
+          }}}
         }
-      });
+      }
+    });
+
+    // Build legend
+    if (legend) {
+      legend.innerHTML = pieLabels.map((sym, i) => {
+        const pct = (pieValues[i] / total * 100).toFixed(1);
+        return `<div class="pie-legend-item">
+          <span class="pie-dot" style="background:${pieColors[i]}"></span>
+          <span class="pie-sym">${sym}</span>
+          <span class="pie-pct">${pct}%</span>
+        </div>`;
+      }).join('');
     }
   });
   fetchAndUpdateLivePrices(CURRENT_TICKERS, openPositions);
