@@ -815,20 +815,44 @@ function buildTradesTable(positions, q, filter) {
       ? rollOpenLegs[0]['Expiration Date'] || ''
       : '';
 
-    const tradeBody = isRoll ? `
-      <div class="trade-body">
-        <div class="trade-side">
-          <div class="side-label" style="color:var(--red)"><i class="ti ti-lock" aria-hidden="true"></i> Closed ${rollExpClose ? 'exp ' + rollExpClose : ''}</div>
+    const tradeBody = isRoll ? (() => {
+      // Look up the original open position if it exists
+      const origPos = p.rolledFromOid ? positions.find(x => x.oid === p.rolledFromOid) : null;
+      const origLegs = origPos ? origPos.openLegs : [];
+      const origTotal = origPos ? origPos.openTotal : 0;
+      const origDate  = origPos ? fmtDate(origPos.openDate) : '';
+      const origExp   = origLegs.length ? origLegs[0]['Expiration Date'] || '' : '';
+      const totalPnl  = origTotal + rollCloseTotal + rollOpenTotal;
+      const hasOrig   = origLegs.length > 0;
+
+      return `
+      <div class="trade-body" style="flex-direction:column;gap:0">
+        ${hasOrig ? `
+        <div class="roll-section">
+          <div class="side-label"><i class="ti ti-lock-open" aria-hidden="true"></i> Originally opened ${origDate}${origExp ? ' · exp ' + origExp : ''}</div>
+          <div class="legs">${legsHtml(origLegs)}</div>
+          <div class="side-total">Original credit <span class="${origTotal>=0?'pos':'neg'}">${fmt(origTotal)}</span></div>
+        </div>
+        <div class="roll-divider"><div class="divider-line"></div><i class="ti ti-refresh"></i><div class="divider-line"></div></div>
+        ` : ''}
+        <div class="roll-section">
+          <div class="side-label" style="color:var(--red)"><i class="ti ti-lock" aria-hidden="true"></i> Closed${rollExpClose ? ' exp ' + rollExpClose : ''}</div>
           <div class="legs">${legsHtml(rollCloseLegs)}</div>
           <div class="side-total">Total <span class="${rollCloseTotal>=0?'pos':'neg'}">${fmt(rollCloseTotal)}</span></div>
         </div>
-        <div class="trade-divider" aria-hidden="true"><div class="divider-line"></div><i class="ti ti-refresh"></i><div class="divider-line"></div></div>
-        <div class="trade-side">
-          <div class="side-label" style="color:var(--green)"><i class="ti ti-lock-open" aria-hidden="true"></i> Rolled to ${rollExpOpen ? 'exp ' + rollExpOpen : ''}</div>
+        <div class="roll-divider"><div class="divider-line"></div><i class="ti ti-refresh"></i><div class="divider-line"></div></div>
+        <div class="roll-section">
+          <div class="side-label" style="color:var(--green)"><i class="ti ti-lock-open" aria-hidden="true"></i> Rolled to${rollExpOpen ? ' exp ' + rollExpOpen : ''}</div>
           <div class="legs">${legsHtml(rollOpenLegs)}</div>
-          <div class="side-total">Total <span class="${rollOpenTotal>=0?'pos':'neg'}">${fmt(rollOpenTotal)}</span></div>
+          <div class="side-total">New credit <span class="${rollOpenTotal>=0?'pos':'neg'}">${fmt(rollOpenTotal)}</span></div>
         </div>
-      </div>` : `
+        ${hasOrig ? `
+        <div class="roll-running-total">
+          <span style="color:var(--text-secondary);font-size:11.5px">Running P&L (orig + roll)</span>
+          <span class="pnl-value ${totalPnl>=0?'pos':'neg'}" style="font-size:14px">${totalPnl>0?'+':''}${fmt(totalPnl)}</span>
+        </div>` : ''}
+      </div>`;
+    })() : `
       <div class="trade-body">
         <div class="trade-side">
           <div class="side-label"><i class="ti ti-lock-open" aria-hidden="true"></i> Opened ${fmtDate(p.openDate)}</div>
