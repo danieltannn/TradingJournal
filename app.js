@@ -315,25 +315,59 @@ function processData(rows) {
     orderMap[oid].push(r);
   });
 
+  // Classify each order: 'open', 'close', or 'roll' (has both open + close legs)
+  const orderType = {};
+  Object.entries(orderMap).forEach(([oid, legs]) => {
+    const hasOpen  = legs.some(l => l['Action'].includes('OPEN'));
+    const hasClose = legs.some(l => l['Action'].includes('CLOSE'));
+    orderType[oid] = hasOpen && hasClose ? 'roll'
+                   : hasOpen             ? 'open'
+                   :                       'close';
+  });
+
+  // Map each symbol → its originating open order
   const symToOpenOrder = {};
   Object.entries(orderMap).forEach(([oid, legs]) => {
-    if (legs.some(l => l['Action'].includes('OPEN')))
+    if (orderType[oid] === 'open')
       legs.forEach(l => { symToOpenOrder[l['Symbol']] = oid; });
   });
 
-  const openToCloseOrders = {};
-  const openToExpiries    = {};
-
+  // Also map roll open legs to their new open order
   Object.entries(orderMap).forEach(([oid, legs]) => {
-    if (legs.every(l => l['Action'].includes('CLOSE'))) {
-      legs.forEach(l => {
-        const parent = symToOpenOrder[l['Symbol']];
-        if (!parent) return;
-        if (!openToCloseOrders[parent]) openToCloseOrders[parent] = [];
-        if (!openToCloseOrders[parent].includes(oid)) openToCloseOrders[parent].push(oid);
-      });
+    if (orderType[oid] === 'roll') {
+      legs.filter(l => l['Action'].includes('OPEN'))
+          .forEach(l => { symToOpenOrder[l['Symbol']] = oid; });
     }
   });
+
+  // Link close orders → parent open order
+  const openToCloseOrders = {};
+  Object.entries(orderMap).forEach(([oid, legs]) => {
+    if (orderType[oid] !== 'close') return;
+    legs.forEach(l => {
+      const parent = symToOpenOrder[l['Symbol']];
+      if (!parent) return;
+      if (!openToCloseOrders[parent]) openToCloseOrders[parent] = [];
+      if (!openToCloseOrders[parent].includes(oid)) openToCloseOrders[parent].push(oid);
+    });
+  });
+
+  // Link roll CLOSE legs → their parent open order
+  // (so the original position shows the roll-close legs as its close)
+  const openToRollClose = {};   // parent oid → [roll oid, ...]
+  const rollFrom = {};          // roll oid → parent oid (what it rolled from)
+  Object.entries(orderMap).forEach(([oid, legs]) => {
+    if (orderType[oid] !== 'roll') return;
+    legs.filter(l => l['Action'].includes('CLOSE')).forEach(l => {
+      const parent = symToOpenOrder[l['Symbol']];
+      if (!parent || parent === oid) return;
+      if (!openToRollClose[parent]) openToRollClose[parent] = [];
+      if (!openToRollClose[parent].includes(oid)) openToRollClose[parent].push(oid);
+      rollFrom[oid] = parent;
+    });
+  });
+
+  const openToExpiries = {};
   expiries.forEach(exp => {
     const parent = symToOpenOrder[exp['Symbol']];
     if (!parent) return;
@@ -343,23 +377,44 @@ function processData(rows) {
 
   const positions = [];
   Object.entries(orderMap).forEach(([oid, legs]) => {
+    const type     = orderType[oid];
     const openLegs = legs.filter(l => l['Action'].includes('OPEN'));
-    if (!openLegs.length) return;
-    const closeOids  = openToCloseOrders[oid] || [];
-    const expiryRows = openToExpiries[oid] || [];
-    const closeLegs  = closeOids.flatMap(cid => orderMap[cid] || []);
-    const isClosed   = closeLegs.length > 0 || expiryRows.length > 0;
-    const isExpired  = expiryRows.length > 0;
-    const sample     = openLegs[0];
-    const openDate   = openLegs.reduce((m, l) => l['Date'] < m ? l['Date'] : m, openLegs[0]['Date']);
-    const allClose   = [...closeLegs, ...expiryRows];
-    const closeDate  = allClose.length ? allClose.reduce((m, l) => l['Date'] < m ? l['Date'] : m, allClose[0]['Date']) : null;
-    const openTotal  = openLegs.reduce((s, l) => s + parseVal(l['Total']), 0);
-    const closeTotal = [...closeLegs, ...expiryRows].reduce((s, l) => s + parseVal(l['Total']), 0);
-    positions.push({ oid, ul: sample['Underlying Symbol'] || sample['Root Symbol'] || '—',
+    if (!openLegs.length) return;  // pure-close orders have no open legs → skip
+
+    const closeOids   = openToCloseOrders[oid] || [];
+    const rollCloseOids = openToRollClose[oid] || [];
+    const expiryRows  = openToExpiries[oid] || [];
+    const closeLegs   = closeOids.flatMap(cid => orderMap[cid] || []);
+    const rollCloseLegs = rollCloseOids.flatMap(rid => (orderMap[rid] || []).filter(l => l['Action'].includes('CLOSE')));
+    const allCloseLegs = [...closeLegs, ...rollCloseLegs];
+    const isClosed    = allCloseLegs.length > 0 || expiryRows.length > 0;
+    const isExpired   = expiryRows.length > 0;
+    const isRoll      = type === 'roll';
+    const rolledFromOid = rollFrom[oid] || null;
+
+    // For a roll, include BOTH the close legs (old spread) and open legs (new spread)
+    const allLegsForCard = isRoll ? legs : openLegs;
+
+    const sample    = openLegs[0];
+    const openDate  = openLegs.reduce((m, l) => l['Date'] < m ? l['Date'] : m, openLegs[0]['Date']);
+    const allClose  = [...allCloseLegs, ...expiryRows];
+    const closeDate = allClose.length ? allClose.reduce((m, l) => l['Date'] < m ? l['Date'] : m, allClose[0]['Date']) : null;
+    const openTotal = openLegs.reduce((s, l) => s + parseVal(l['Total']), 0);
+
+    // For rolls: closeTotal = sum of the CLOSE legs inside the roll order
+    const rollCloseTotal = isRoll
+      ? legs.filter(l => l['Action'].includes('CLOSE')).reduce((s, l) => s + parseVal(l['Total']), 0)
+      : 0;
+    const regularCloseTotal = [...closeLegs, ...expiryRows].reduce((s, l) => s + parseVal(l['Total']), 0);
+    const closeTotal = regularCloseTotal + rollCloseTotal;
+
+    positions.push({
+      oid, ul: sample['Underlying Symbol'] || sample['Root Symbol'] || '—',
       expDate: sample['Expiration Date'] || '—', openDate, closeDate,
-      isClosed, isExpired, openLegs, closeLegs, expiryRows,
-      openTotal, closeTotal, netPnl: openTotal + closeTotal });
+      isClosed, isExpired, isRoll, rolledFromOid,
+      openLegs, closeLegs: allCloseLegs, expiryRows, allLegsForCard,
+      openTotal, closeTotal, netPnl: openTotal + closeTotal
+    });
   });
 
   positions.sort((a, b) => {
@@ -736,19 +791,44 @@ function buildTradesTable(positions, q, filter) {
   if (pages['trades']>totalPages) pages['trades']=totalPages;
   const slice=rows.slice((pages['trades']-1)*PAGE_SIZE,pages['trades']*PAGE_SIZE);
   const rowsHtml=slice.map((p,idx)=>{
-    const statusBadge=p.isClosed?`<span class="badge ${p.isExpired?'expired':'closed'}">${p.isExpired?'Expired':'Closed'}</span>`:`<span class="badge open">Open</span>`;
-    const pnlVal=p.isClosed?p.netPnl:p.openTotal;
-    const cardId=`trade-${pages['trades']||1}-${idx}`;
-    // Open positions expanded by default, closed collapsed by default
-    const startOpen=!p.isClosed;
-    return `<div class="trade-row ${p.isClosed?'trade-closed':'trade-open'} ${startOpen?'expanded':'collapsed'}" id="${cardId}">
-      <div class="trade-header" onclick="toggleTrade('${cardId}')" style="cursor:pointer">
-        <div class="trade-header-left"><span class="trade-ul">${p.ul}</span><span class="trade-exp">exp ${p.expDate}</span>${statusBadge}</div>
-        <div style="display:flex;align-items:center;gap:12px">
-          <div class="trade-pnl"><span class="pnl-label">${p.isClosed?'Net P&L':'Open P&L'}</span><span class="pnl-value ${pnlVal>=0?'pos':'neg'}">${fmt(pnlVal)}</span></div>
-          <i class="ti ti-chevron-down trade-chevron" aria-hidden="true"></i>
+    const isRoll = p.isRoll;
+    const statusBadge = isRoll
+      ? `<span class="badge trade">Roll</span><span class="badge open">Open</span>`
+      : p.isClosed
+        ? `<span class="badge ${p.isExpired?'expired':'closed'}">${p.isExpired?'Expired':'Closed'}</span>`
+        : `<span class="badge open">Open</span>`;
+    const pnlVal  = isRoll ? p.openTotal + p.closeTotal : p.isClosed ? p.netPnl : p.openTotal;
+    const pnlLabel = isRoll ? 'Roll Credit' : p.isClosed ? 'Net P&L' : 'Open P&L';
+    const cardId  = `trade-${pages['trades']||1}-${idx}`;
+    const startOpen = !p.isClosed || isRoll;
+
+    // Roll-specific: split the allLegsForCard into close and open groups
+    const rollCloseLegs = isRoll ? p.allLegsForCard.filter(l => l['Action'].includes('CLOSE')) : [];
+    const rollOpenLegs  = isRoll ? p.allLegsForCard.filter(l => l['Action'].includes('OPEN'))  : [];
+    const rollCloseTotal = rollCloseLegs.reduce((s,l) => s + parseVal(l['Total']), 0);
+    const rollOpenTotal  = rollOpenLegs.reduce((s,l) => s + parseVal(l['Total']), 0);
+
+    const rollExpClose = isRoll && rollCloseLegs.length
+      ? rollCloseLegs[0]['Expiration Date'] || ''
+      : '';
+    const rollExpOpen = isRoll && rollOpenLegs.length
+      ? rollOpenLegs[0]['Expiration Date'] || ''
+      : '';
+
+    const tradeBody = isRoll ? `
+      <div class="trade-body">
+        <div class="trade-side">
+          <div class="side-label" style="color:var(--red)"><i class="ti ti-lock" aria-hidden="true"></i> Closed ${rollExpClose ? 'exp ' + rollExpClose : ''}</div>
+          <div class="legs">${legsHtml(rollCloseLegs)}</div>
+          <div class="side-total">Total <span class="${rollCloseTotal>=0?'pos':'neg'}">${fmt(rollCloseTotal)}</span></div>
         </div>
-      </div>
+        <div class="trade-divider" aria-hidden="true"><div class="divider-line"></div><i class="ti ti-refresh"></i><div class="divider-line"></div></div>
+        <div class="trade-side">
+          <div class="side-label" style="color:var(--green)"><i class="ti ti-lock-open" aria-hidden="true"></i> Rolled to ${rollExpOpen ? 'exp ' + rollExpOpen : ''}</div>
+          <div class="legs">${legsHtml(rollOpenLegs)}</div>
+          <div class="side-total">Total <span class="${rollOpenTotal>=0?'pos':'neg'}">${fmt(rollOpenTotal)}</span></div>
+        </div>
+      </div>` : `
       <div class="trade-body">
         <div class="trade-side">
           <div class="side-label"><i class="ti ti-lock-open" aria-hidden="true"></i> Opened ${fmtDate(p.openDate)}</div>
@@ -760,7 +840,17 @@ function buildTradesTable(positions, q, filter) {
           <div class="side-label"><i class="ti ti-lock" aria-hidden="true"></i> ${p.isClosed?'Closed '+fmtDate(p.closeDate):'Not yet closed'}</div>
           ${p.isClosed?`<div class="legs">${legsHtml([...p.closeLegs,...p.expiryRows])}</div><div class="side-total">Total <span class="${p.closeTotal>=0?'pos':'neg'}">${fmt(p.closeTotal)}</span></div>`:`<div class="legs open-placeholder"><span class="placeholder-text">Position still open</span></div>`}
         </div>
+      </div>`;
+
+    return `<div class="trade-row ${p.isClosed&&!isRoll?'trade-closed':'trade-open'} ${startOpen?'expanded':'collapsed'}" id="${cardId}">
+      <div class="trade-header" onclick="toggleTrade('${cardId}')" style="cursor:pointer">
+        <div class="trade-header-left"><span class="trade-ul">${p.ul}</span><span class="trade-exp">exp ${p.expDate}</span>${statusBadge}</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="trade-pnl"><span class="pnl-label">${pnlLabel}</span><span class="pnl-value ${pnlVal>=0?'pos':'neg'}">${fmt(pnlVal)}</span></div>
+          <i class="ti ti-chevron-down trade-chevron" aria-hidden="true"></i>
+        </div>
       </div>
+      ${tradeBody}
     </div>`;
   }).join('');
   const pg=`<div class="pg"><span>${total} position${total!==1?'s':''}</span>${pages['trades']>1?`<button onclick="changePage('trades',-1)">← Prev</button>`:''}<span>Page ${pages['trades']} / ${totalPages}</span>${pages['trades']<totalPages?`<button onclick="changePage('trades',1)">Next →</button>`:''}</div>`;
