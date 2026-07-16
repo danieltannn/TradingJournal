@@ -923,3 +923,35 @@ tr:hover td { background: var(--bg-secondary); }
   background: var(--bg-secondary);
   border-right: 0.5px solid var(--border);
 }
+
+/* ── Roll card sections ── */
+.roll-section {
+  padding: 12px 14px;
+}
+.roll-section + .roll-section {
+  border-top: 0.5px solid var(--border);
+}
+.roll-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  background: var(--bg-secondary);
+  border-top: 0.5px solid var(--border);
+  border-bottom: 0.5px solid var(--border);
+}
+.roll-divider .divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.roll-running-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-top: 0.5px solid var(--border);
+}
