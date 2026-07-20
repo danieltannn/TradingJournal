@@ -481,14 +481,16 @@ function renderMetrics() {
   const closedPnl = closed.reduce((s, p) => s + p.netPnl, 0);
   const winners   = closed.filter(p => p.netPnl > 0).length;
   const winRate   = closed.length ? Math.round(winners / closed.length * 100) : 0;
-  el('metricsRow').innerHTML = [
-    { label: 'Account Balance',  value: fmt(balance),       cls: balance   >= 0 ? 'pos' : 'neg' },
-    { label: 'Total Deposited',  value: fmt(totalDeposits), cls: '' },
-    { label: 'Closed P&L',      value: fmt(closedPnl),     cls: closedPnl >= 0 ? 'pos' : 'neg' },
-    { label: 'Open Positions',   value: open.length,        cls: '' },
-    { label: 'Closed Positions', value: closed.length,      cls: '' },
-    { label: 'Win Rate',         value: winRate + '%',      cls: winRate >= 50 ? 'pos' : 'neg' },
-  ].map(m => `<div class="metric"><div class="label">${m.label}</div><div class="value ${m.cls}">${m.value}</div></div>`).join('');
+  el('metricsRow').innerHTML = `
+    <div class="sgd-grid" style="margin-bottom:0">
+      <div class="sgd-cell"><div class="sgd-lbl">Account Balance</div><div class="sgd-val ${balance>=0?'pos':'neg'}">${fmt(balance)}</div></div>
+      <div class="sgd-cell"><div class="sgd-lbl">Total Deposited</div><div class="sgd-val">${fmt(totalDeposits)}</div></div>
+      <div class="sgd-cell"><div class="sgd-lbl">Closed P&L</div><div class="sgd-val ${closedPnl>=0?'pos':'neg'}">${closedPnl>=0?'+':''}${fmt(closedPnl)}</div></div>
+      <div class="sgd-divider"></div>
+      <div class="sgd-cell"><div class="sgd-lbl">Open Positions</div><div class="sgd-val">${open.length}</div></div>
+      <div class="sgd-cell"><div class="sgd-lbl">Closed Positions</div><div class="sgd-val">${closed.length}</div></div>
+      <div class="sgd-cell"><div class="sgd-lbl">Win Rate</div><div class="sgd-val ${winRate>=50?'pos':'neg'}">${winRate}%</div></div>
+    </div>`;
 }
 
 // ── Tabs ───────────────────────────────────────────────────────────────────
@@ -557,10 +559,6 @@ function renderSummary(container) {
     </div>`).join('');
 
   container.innerHTML = `
-    <div class="summary-grid">
-      <div class="summary-card"><h3>Top 5 winners</h3>${symList(sorted.slice(0,5))}</div>
-      <div class="summary-card"><h3>Top 5 losers</h3>${symList(sorted.slice(-5).reverse())}</div>
-    </div>
     <div class="chart-card">
       <h3>Monthly P&L</h3>
       <div style="position:relative;height:${Math.max(180, months.length*26)}px">
