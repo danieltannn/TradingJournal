@@ -481,8 +481,12 @@ function renderMetrics() {
   const closedPnl = closed.reduce((s, p) => s + p.netPnl, 0);
   const winners   = closed.filter(p => p.netPnl > 0).length;
   const winRate   = closed.length ? Math.round(winners / closed.length * 100) : 0;
-  el('metricsRow').innerHTML = `
-    <div class="sgd-grid" style="margin-bottom:0">
+  // Force block display so sgd-grid inside fills full width
+  const row = el('metricsRow');
+  row.style.display = 'block';
+  row.style.marginBottom = '14px';
+  row.innerHTML = `
+    <div class="sgd-grid">
       <div class="sgd-cell"><div class="sgd-lbl">Account Balance</div><div class="sgd-val ${balance>=0?'pos':'neg'}">${fmt(balance)}</div></div>
       <div class="sgd-cell"><div class="sgd-lbl">Total Deposited</div><div class="sgd-val">${fmt(totalDeposits)}</div></div>
       <div class="sgd-cell"><div class="sgd-lbl">Closed P&L</div><div class="sgd-val ${closedPnl>=0?'pos':'neg'}">${closedPnl>=0?'+':''}${fmt(closedPnl)}</div></div>
@@ -559,6 +563,10 @@ function renderSummary(container) {
     </div>`).join('');
 
   container.innerHTML = `
+    <div class="summary-grid">
+      <div class="summary-card"><h3>Top 5 winners</h3>${symList(sorted.slice(0,5))}</div>
+      <div class="summary-card"><h3>Top 5 losers</h3>${symList(sorted.slice(-5).reverse())}</div>
+    </div>
     <div class="chart-card">
       <h3>Monthly P&L</h3>
       <div style="position:relative;height:${Math.max(180, months.length*26)}px">
@@ -641,32 +649,48 @@ function renderDeposits(container) {
   const tblRow2 = r => { const t=parseVal(r['Total']); return `<tr><td>${fmtDate(r['Date'])}</td><td><span class="badge ${badge(r)}">${r['Sub Type']}</span></td><td>${r['Description']}</td><td class="${t>=0?'pos':'neg'}">${fmt(t)}</td></tr>`; };
 
   container.innerHTML = `
-    <div class="section-metrics">
-      <div class="metric"><div class="label">Total deposited (USD)</div><div class="value pos">${fmt(totalDep)}</div></div>
-      <div class="metric"><div class="label">Total deposited (SGD)</div><div class="value pos">${totalSgd ? fmtSgd(totalSgd) : '—'}</div></div>
-      <div class="metric"><div class="label">Interest earned</div><div class="value pos">${fmt(totalInt)}</div></div>
-      <div class="metric"><div class="label">Balance adjustments</div><div class="value ${totalAdj>=0?'pos':'neg'}">${fmt(totalAdj)}</div></div>
-    </div>
-
     <div class="dep-section">
-      <div class="dep-section-header"><i class="ti ti-building-bank" aria-hidden="true"></i> Deposits <span class="dep-count">${depRows.length}</span></div>
-      <div id="sgd-status-bar" style="display:none;font-size:12px;padding:5px 0;color:var(--text-secondary)"></div>
-      <div class="tbl-wrap">
-        <table>
-          <thead><tr>
-            <th style="width:90px">Date</th>
-            <th style="width:90px">Type</th>
-            <th>Description</th>
-            <th style="width:90px">USD Amount</th>
-            <th style="width:160px">SGD Amount</th>
-          </tr></thead>
-          <tbody>${depTableRows}</tbody>
-        </table>
+      <div class="dep-section-header"><i class="ti ti-wallet" aria-hidden="true"></i> Deposits Summary</div>
+      <div class="sgd-grid" style="margin-bottom:10px">
+        <div class="sgd-cell"><div class="sgd-lbl">Total (USD)</div><div class="sgd-val pos">${fmt(totalDep)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Total (SGD)</div><div class="sgd-val pos">${totalSgd ? fmtSgd(totalSgd) : '—'}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Interest</div><div class="sgd-val pos">${fmt(totalInt)}</div></div>
+        <div class="sgd-divider"></div>
+        <div class="sgd-cell" style="grid-column:1/3"><div class="sgd-lbl">Balance Adjustments</div><div class="sgd-val ${totalAdj>=0?'pos':'neg'}">${fmt(totalAdj)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Net</div><div class="sgd-val pos">${fmt(totalDep+totalInt+totalAdj)}</div></div>
       </div>
-    </div>
 
-    <div class="dep-section"><div class="dep-section-header"><i class="ti ti-coin" aria-hidden="true"></i> Credit interest <span class="dep-count">${intRows.length}</span></div>${paginate('int',intRows,tblRow2,hdrs2)}</div>
-    <div class="dep-section"><div class="dep-section-header"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Balance adjustments <span class="dep-count">${adjRows.length}</span></div>${paginate('adj',adjRows,tblRow2,hdrs2)}</div>`;
+      <div id="sgd-status-bar" style="display:none;font-size:12px;padding:4px 0;color:var(--text-secondary)"></div>
+
+      <div class="sgd-txn-toggle" onclick="this.classList.toggle('open')">
+        <span><i class="ti ti-building-bank" aria-hidden="true"></i> Deposits (${depRows.length})</span>
+        <i class="ti ti-chevron-down" aria-hidden="true"></i>
+      </div>
+      <div class="sgd-txn-body">
+        <div class="tbl-wrap" style="margin-top:8px">
+          <table>
+            <thead><tr>
+              <th style="width:90px">Date</th><th style="width:80px">Type</th>
+              <th>Description</th><th style="width:90px">USD</th>
+              <th style="width:130px">SGD</th>
+            </tr></thead>
+            <tbody>${depTableRows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sgd-txn-toggle" onclick="this.classList.toggle('open')" style="margin-top:8px">
+        <span><i class="ti ti-coin" aria-hidden="true"></i> Credit Interest (${intRows.length})</span>
+        <i class="ti ti-chevron-down" aria-hidden="true"></i>
+      </div>
+      <div class="sgd-txn-body">${paginate('int',intRows,tblRow2,hdrs2)}</div>
+
+      <div class="sgd-txn-toggle" onclick="this.classList.toggle('open')" style="margin-top:8px">
+        <span><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i> Balance Adjustments (${adjRows.length})</span>
+        <i class="ti ti-chevron-down" aria-hidden="true"></i>
+      </div>
+      <div class="sgd-txn-body">${paginate('adj',adjRows,tblRow2,hdrs2)}</div>
+    </div>`;
 }
 
 window.openSgdInput = function(hash) {
