@@ -556,17 +556,7 @@ function renderSummary(container) {
     monthPnl[key] = (monthPnl[key] || 0) + parseVal(r['Value']) + parseVal(r['Commissions']) - Math.abs(parseVal(r['Fees']));
   });
   const months = Object.keys(monthPnl).sort();
-  const symList = items => items.map(p => `
-    <div class="sym-row">
-      <span class="sym-name mono">${p.ul} ${p.expDate}</span>
-      <span class="sym-val ${p.netPnl >= 0 ? 'pos' : 'neg'}">${fmt(p.netPnl)}</span>
-    </div>`).join('');
-
   container.innerHTML = `
-    <div class="summary-grid">
-      <div class="summary-card"><h3>Top 5 winners</h3>${symList(sorted.slice(0,5))}</div>
-      <div class="summary-card"><h3>Top 5 losers</h3>${symList(sorted.slice(-5).reverse())}</div>
-    </div>
     <div class="chart-card">
       <h3>Monthly P&L</h3>
       <div style="position:relative;height:${Math.max(180, months.length*26)}px">
