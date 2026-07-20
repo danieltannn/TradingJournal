@@ -726,13 +726,21 @@ window.saveSgdInline = async function(hash) {
 function renderTrades(container) {
   const { positions } = processed;
   const open=positions.filter(p=>!p.isClosed), closed=positions.filter(p=>p.isClosed);
-  const closedPnl=closed.reduce((s,p)=>s+p.netPnl,0), winners=closed.filter(p=>p.netPnl>0).length;
+  const closedPnl=closed.reduce((s,p)=>s+p.netPnl,0);
+  const openPnl=open.reduce((s,p)=>s+p.openTotal,0);
+  const winners=closed.filter(p=>p.netPnl>0).length;
+  const winRate=closed.length>0?((winners/closed.length)*100).toFixed(0)+'%':'—';
   container.innerHTML = `
-    <div class="section-metrics">
-      <div class="metric"><div class="label">Closed P&L</div><div class="value ${closedPnl>=0?'pos':'neg'}">${fmt(closedPnl)}</div></div>
-      <div class="metric"><div class="label">Open</div><div class="value">${open.length}</div></div>
-      <div class="metric"><div class="label">Closed</div><div class="value">${closed.length}</div></div>
-      <div class="metric"><div class="label">Winners / Losers</div><div class="value">${winners} / ${closed.length-winners}</div></div>
+    <div class="dep-section" style="margin-bottom:14px">
+      <div class="sgd-grid">
+        <div class="sgd-cell"><div class="sgd-lbl">Closed P&L</div><div class="sgd-val ${closedPnl>=0?'pos':'neg'}">${closedPnl>=0?'+':''}${fmt(closedPnl)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Open P&L</div><div class="sgd-val ${openPnl>=0?'pos':'neg'}">${openPnl>=0?'+':''}${fmt(openPnl)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Win Rate</div><div class="sgd-val">${winRate}</div></div>
+        <div class="sgd-divider"></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Open Positions</div><div class="sgd-val">${open.length}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Closed</div><div class="sgd-val">${closed.length}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Winners / Losers</div><div class="sgd-val"><span class="pos">${winners}</span> / <span class="neg">${closed.length-winners}</span></div></div>
+      </div>
     </div>
     <div class="search-row">
       <input id="tradeSearch" placeholder="Search underlying, symbol…" oninput="filterTrades(this.value)">
@@ -775,9 +783,7 @@ function legsHtml(legs) {
 
 window.toggleTrade = function(id) {
   const card = document.getElementById(id);
-  if (!card) return;
-  card.classList.toggle('expanded');
-  card.classList.toggle('collapsed');
+  if (card) card.classList.toggle('inv-expanded');
 };
 
 function buildTradesTable(positions, q, filter) {
@@ -791,87 +797,99 @@ function buildTradesTable(positions, q, filter) {
   if (pages['trades']>totalPages) pages['trades']=totalPages;
   const slice=rows.slice((pages['trades']-1)*PAGE_SIZE,pages['trades']*PAGE_SIZE);
   const rowsHtml=slice.map((p,idx)=>{
-    const isRoll = p.isRoll;
+    const isRoll    = p.isRoll;
+    const pnlVal    = isRoll ? p.openTotal + p.closeTotal : p.isClosed ? p.netPnl : p.openTotal;
+    const pnlLabel  = isRoll ? 'Roll Credit' : p.isClosed ? 'Net P&L' : 'Open P&L';
+    const cardId    = `trade-${pages['trades']||1}-${idx}`;
+    const startOpen = !p.isClosed || isRoll;
+
+    // Border colour: green=open/winner, red=loser, orange=expired, blue=roll
+    const borderColor = isRoll         ? 'var(--accent2)'
+                      : p.isExpired    ? 'var(--text-tertiary)'
+                      : !p.isClosed    ? 'var(--green)'
+                      : pnlVal >= 0    ? 'var(--green)'
+                      :                  'var(--red)';
+
+    // Status badge(s)
     const statusBadge = isRoll
       ? `<span class="badge trade">Roll</span><span class="badge open">Open</span>`
       : p.isClosed
         ? `<span class="badge ${p.isExpired?'expired':'closed'}">${p.isExpired?'Expired':'Closed'}</span>`
         : `<span class="badge open">Open</span>`;
-    const pnlVal  = isRoll ? p.openTotal + p.closeTotal : p.isClosed ? p.netPnl : p.openTotal;
-    const pnlLabel = isRoll ? 'Roll Credit' : p.isClosed ? 'Net P&L' : 'Open P&L';
-    const cardId  = `trade-${pages['trades']||1}-${idx}`;
-    const startOpen = !p.isClosed || isRoll;
 
-    // Roll-specific: split the allLegsForCard into close and open groups
-    const rollCloseLegs = isRoll ? p.allLegsForCard.filter(l => l['Action'].includes('CLOSE')) : [];
-    const rollOpenLegs  = isRoll ? p.allLegsForCard.filter(l => l['Action'].includes('OPEN'))  : [];
-    const rollCloseTotal = rollCloseLegs.reduce((s,l) => s + parseVal(l['Total']), 0);
-    const rollOpenTotal  = rollOpenLegs.reduce((s,l) => s + parseVal(l['Total']), 0);
+    const legCount = (p.openLegs||[]).length + (p.closeLegs||[]).length + (p.expiryRows||[]).length;
 
-    const rollExpClose = isRoll && rollCloseLegs.length
-      ? rollCloseLegs[0]['Expiration Date'] || ''
-      : '';
-    const rollExpOpen = isRoll && rollOpenLegs.length
-      ? rollOpenLegs[0]['Expiration Date'] || ''
-      : '';
+    // Roll body
+    const rollCloseLegs  = isRoll ? p.allLegsForCard.filter(l => l['Action'].includes('CLOSE')) : [];
+    const rollOpenLegs   = isRoll ? p.allLegsForCard.filter(l => l['Action'].includes('OPEN'))  : [];
+    const rollCloseTotal = rollCloseLegs.reduce((s,l)=>s+parseVal(l['Total']),0);
+    const rollOpenTotal  = rollOpenLegs.reduce((s,l)=>s+parseVal(l['Total']),0);
+    const rollExpClose   = rollCloseLegs.length ? rollCloseLegs[0]['Expiration Date']||'' : '';
+    const rollExpOpen    = rollOpenLegs.length  ? rollOpenLegs[0]['Expiration Date']||''  : '';
 
-    const tradeBody = isRoll ? (() => {
-      // Look up the original open position if it exists
-      const origPos = p.rolledFromOid ? positions.find(x => x.oid === p.rolledFromOid) : null;
-      const origLegs = origPos ? origPos.openLegs : [];
+    const tradeBody = isRoll ? (()=>{
+      const origPos   = p.rolledFromOid ? positions.find(x=>x.oid===p.rolledFromOid) : null;
+      const origLegs  = origPos ? origPos.openLegs : [];
       const origTotal = origPos ? origPos.openTotal : 0;
       const origDate  = origPos ? fmtDate(origPos.openDate) : '';
-      const origExp   = origLegs.length ? origLegs[0]['Expiration Date'] || '' : '';
+      const origExp   = origLegs.length ? origLegs[0]['Expiration Date']||'' : '';
       const totalPnl  = origTotal + rollCloseTotal + rollOpenTotal;
       const hasOrig   = origLegs.length > 0;
-
-      return `
-      <div class="trade-body" style="flex-direction:column;gap:0">
-        ${hasOrig ? `
+      return `<div class="inv-sym-body"><div style="padding:0 0 2px">
+        ${hasOrig?`
         <div class="roll-section">
-          <div class="side-label"><i class="ti ti-lock-open" aria-hidden="true"></i> Originally opened ${origDate}${origExp ? ' · exp ' + origExp : ''}</div>
+          <div class="side-label"><i class="ti ti-lock-open"></i> Originally opened ${origDate}${origExp?' · exp '+origExp:''}</div>
           <div class="legs">${legsHtml(origLegs)}</div>
           <div class="side-total">Original credit <span class="${origTotal>=0?'pos':'neg'}">${fmt(origTotal)}</span></div>
         </div>
-        <div class="roll-divider"><div class="divider-line"></div><i class="ti ti-refresh"></i><div class="divider-line"></div></div>
-        ` : ''}
+        <div class="roll-divider"><div class="divider-line"></div><i class="ti ti-refresh"></i><div class="divider-line"></div></div>`:''}
         <div class="roll-section">
-          <div class="side-label" style="color:var(--red)"><i class="ti ti-lock" aria-hidden="true"></i> Closed${rollExpClose ? ' exp ' + rollExpClose : ''}</div>
+          <div class="side-label" style="color:var(--red)"><i class="ti ti-lock"></i> Closed${rollExpClose?' exp '+rollExpClose:''}</div>
           <div class="legs">${legsHtml(rollCloseLegs)}</div>
           <div class="side-total">Total <span class="${rollCloseTotal>=0?'pos':'neg'}">${fmt(rollCloseTotal)}</span></div>
         </div>
         <div class="roll-divider"><div class="divider-line"></div><i class="ti ti-refresh"></i><div class="divider-line"></div></div>
         <div class="roll-section">
-          <div class="side-label" style="color:var(--green)"><i class="ti ti-lock-open" aria-hidden="true"></i> Rolled to${rollExpOpen ? ' exp ' + rollExpOpen : ''}</div>
+          <div class="side-label" style="color:var(--green)"><i class="ti ti-lock-open"></i> Rolled to${rollExpOpen?' exp '+rollExpOpen:''}</div>
           <div class="legs">${legsHtml(rollOpenLegs)}</div>
           <div class="side-total">New credit <span class="${rollOpenTotal>=0?'pos':'neg'}">${fmt(rollOpenTotal)}</span></div>
         </div>
-        ${hasOrig ? `
-        <div class="roll-running-total">
-          <span style="color:var(--text-secondary);font-size:11.5px">Running P&L (orig + roll)</span>
-          <span class="pnl-value ${totalPnl>=0?'pos':'neg'}" style="font-size:14px">${totalPnl>0?'+':''}${fmt(totalPnl)}</span>
-        </div>` : ''}
-      </div>`;
-    })() : `
+        ${hasOrig?`<div class="roll-running-total"><span style="color:var(--text-secondary);font-size:11.5px">Running P&L (orig + roll)</span><span class="pnl-value ${totalPnl>=0?'pos':'neg'}">${totalPnl>0?'+':''}${fmt(totalPnl)}</span></div>`:''}
+      </div></div>`;
+    })() : `<div class="inv-sym-body">
       <div class="trade-body">
         <div class="trade-side">
-          <div class="side-label"><i class="ti ti-lock-open" aria-hidden="true"></i> Opened ${fmtDate(p.openDate)}</div>
+          <div class="side-label"><i class="ti ti-lock-open"></i> Opened ${fmtDate(p.openDate)}</div>
           <div class="legs">${legsHtml(p.openLegs)}</div>
           <div class="side-total">Total <span class="${p.openTotal>=0?'pos':'neg'}">${fmt(p.openTotal)}</span></div>
         </div>
-        <div class="trade-divider" aria-hidden="true"><div class="divider-line"></div><i class="ti ti-arrow-right"></i><div class="divider-line"></div></div>
+        <div class="trade-divider"><div class="divider-line"></div><i class="ti ti-arrow-right"></i><div class="divider-line"></div></div>
         <div class="trade-side">
-          <div class="side-label"><i class="ti ti-lock" aria-hidden="true"></i> ${p.isClosed?'Closed '+fmtDate(p.closeDate):'Not yet closed'}</div>
+          <div class="side-label"><i class="ti ti-lock"></i> ${p.isClosed?'Closed '+fmtDate(p.closeDate):'Not yet closed'}</div>
           ${p.isClosed?`<div class="legs">${legsHtml([...p.closeLegs,...p.expiryRows])}</div><div class="side-total">Total <span class="${p.closeTotal>=0?'pos':'neg'}">${fmt(p.closeTotal)}</span></div>`:`<div class="legs open-placeholder"><span class="placeholder-text">Position still open</span></div>`}
         </div>
-      </div>`;
+      </div>
+    </div>`;
 
-    return `<div class="trade-row ${p.isClosed&&!isRoll?'trade-closed':'trade-open'} ${startOpen?'expanded':'collapsed'}" id="${cardId}">
-      <div class="trade-header" onclick="toggleTrade('${cardId}')" style="cursor:pointer">
-        <div class="trade-header-left"><span class="trade-ul">${p.ul}</span><span class="trade-exp">exp ${p.expDate}</span>${statusBadge}</div>
-        <div style="display:flex;align-items:center;gap:12px">
-          <div class="trade-pnl"><span class="pnl-label">${pnlLabel}</span><span class="pnl-value ${pnlVal>=0?'pos':'neg'}">${fmt(pnlVal)}</span></div>
-          <i class="ti ti-chevron-down trade-chevron" aria-hidden="true"></i>
+    return `<div class="inv-sym-card ${startOpen?'inv-expanded':''}" style="border-left-color:${borderColor}" id="${cardId}">
+      <div class="inv-sym-header" onclick="toggleTrade('${cardId}')">
+        <div class="inv-sym-left">
+          <span class="badge trade" style="font-size:12px;padding:3px 8px">${p.ul}</span>
+          ${statusBadge}
+          <div class="inv-sym-meta">
+            <span>exp ${p.expDate}</span>
+            <span class="inv-sep">·</span>
+            <span>${legCount} leg${legCount!==1?'s':''}</span>
+            <span class="inv-sep">·</span>
+            <span>${p.isClosed&&!isRoll?'closed '+fmtDate(p.closeDate):'opened '+fmtDate(p.openDate)}</span>
+          </div>
+        </div>
+        <div class="inv-sym-right">
+          <div class="inv-stat">
+            <span class="inv-stat-label">${pnlLabel}</span>
+            <span class="inv-stat-val ${pnlVal>=0?'pos':'neg'}">${pnlVal>0?'+':''}${fmt(pnlVal)}</span>
+          </div>
+          <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
         </div>
       </div>
       ${tradeBody}
