@@ -955,3 +955,13 @@ tr:hover td { background: var(--bg-secondary); }
   background: var(--bg-secondary);
   border-top: 0.5px solid var(--border);
 }
+
+/* ── Trade cards now use inv-sym-card — ensure body shows when expanded ── */
+.inv-sym-card .trade-body {
+  display: flex;
+  gap: 0;
+  flex-direction: row;
+}
+@media (max-width: 600px) {
+  .inv-sym-card .trade-body { flex-direction: column; }
+}
