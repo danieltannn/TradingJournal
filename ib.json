@@ -1387,64 +1387,134 @@
       "comm": -0.03723931,
       "realPL": 0,
       "code": "O;R"
+    },
+    {
+      "symbol": "DGRO",
+      "dateRaw": "2026-07-13, 10:26:54",
+      "qty": 1.4883,
+      "tPrice": 77.266640462,
+      "proceeds": -114.995941,
+      "comm": -0.382109715,
+      "realPL": 0,
+      "code": "FPA;O;P"
+    },
+    {
+      "symbol": "FBTC",
+      "dateRaw": "2026-07-13, 10:27:15",
+      "qty": 2.1143,
+      "tPrice": 54.39,
+      "proceeds": -114.996777,
+      "comm": -0.382248233,
+      "realPL": 0,
+      "code": "FPA;O;P"
+    },
+    {
+      "symbol": "QQQM",
+      "dateRaw": "2026-07-13, 10:27:37",
+      "qty": 1.9618,
+      "tPrice": 295.12509736,
+      "proceeds": -578.976416,
+      "comm": -0.380896215,
+      "realPL": 0,
+      "code": "O;P;RPA"
+    },
+    {
+      "symbol": "SCHD",
+      "dateRaw": "2026-07-13, 10:27:53",
+      "qty": 7.0956,
+      "tPrice": 32.555067366,
+      "proceeds": -230.997736,
+      "comm": -0.383350447,
+      "realPL": 0,
+      "code": "FPA;O;P"
+    },
+    {
+      "symbol": "SMH",
+      "dateRaw": "2026-07-13, 10:28:08",
+      "qty": 0.1928,
+      "tPrice": 596.43,
+      "proceeds": -114.991704,
+      "comm": -0.381823058,
+      "realPL": 0,
+      "code": "FP;O"
+    },
+    {
+      "symbol": "SPYL",
+      "dateRaw": "2026-07-13, 10:28:39",
+      "qty": 30.8967,
+      "tPrice": 18.67512612,
+      "proceeds": -576.9967692,
+      "comm": -1.853,
+      "realPL": 0,
+      "code": "FPA;O;P"
+    },
+    {
+      "symbol": "VGT",
+      "dateRaw": "2026-07-13, 10:36:08",
+      "qty": 4.9563,
+      "tPrice": 116.82,
+      "proceeds": -578.994966,
+      "comm": -0.375901079,
+      "realPL": 0,
+      "code": "O;P;RPA"
     }
   ],
   "openPositions": {
     "DGRO": {
-      "qty": 162.966,
-      "costPrice": 64.57139075,
-      "costBasis": 10522.941265,
-      "closePrice": 77.06,
-      "mktValue": 12558.16,
-      "unrealPL": 2035.218727
+      "qty": 164.4543,
+      "costPrice": 64.688605382,
+      "costBasis": 10638.319316,
+      "closePrice": 77.14,
+      "mktValue": 12686,
+      "unrealPL": 2047.680678
     },
     "FBTC": {
-      "qty": 14.3326,
-      "costPrice": 67.40078011,
-      "costBasis": 966.028421,
-      "closePrice": 55.615,
-      "mktValue": 797.11,
-      "unrealPL": -168.91842
+      "qty": 16.4469,
+      "costPrice": 65.751445318,
+      "costBasis": 1081.407446,
+      "closePrice": 55.82,
+      "mktValue": 918.07,
+      "unrealPL": -163.337444
     },
     "QQQM": {
-      "qty": 127.9875,
-      "costPrice": 221.786364121,
-      "costBasis": 28385.882278,
-      "closePrice": 298.72,
-      "mktValue": 38232.43,
-      "unrealPL": 9846.547722
+      "qty": 129.9493,
+      "costPrice": 222.896464929,
+      "costBasis": 28965.23959,
+      "closePrice": 286.31,
+      "mktValue": 37205.78,
+      "unrealPL": 8240.540415
     },
     "SCHD": {
-      "qty": 411.973,
-      "costPrice": 28.300819796,
-      "costBasis": 11659.173634,
-      "closePrice": 32.4,
-      "mktValue": 13347.93,
-      "unrealPL": 1688.756371
+      "qty": 419.0686,
+      "costPrice": 28.373766777,
+      "costBasis": 11890.55472,
+      "closePrice": 32.91,
+      "mktValue": 13791.55,
+      "unrealPL": 1900.995285
     },
     "SMH": {
-      "qty": 21.0059,
-      "costPrice": 394.724897814,
-      "costBasis": 8291.551731,
-      "closePrice": 611.03,
-      "mktValue": 12835.24,
-      "unrealPL": 4543.688268
+      "qty": 21.1987,
+      "costPrice": 396.577396633,
+      "costBasis": 8406.925258,
+      "closePrice": 556.53,
+      "mktValue": 11797.71,
+      "unrealPL": 3390.784743
     },
     "SPYL": {
-      "qty": 1874.9078,
-      "costPrice": 15.076366223,
-      "costBasis": 28266.796627,
-      "closePrice": 18.676,
-      "mktValue": 35015.78,
-      "unrealPL": 6748.983374
+      "qty": 1905.8045,
+      "costPrice": 15.135679654,
+      "costBasis": 28845.646396,
+      "closePrice": 18.48,
+      "mktValue": 35219.27,
+      "unrealPL": 6373.6236
     },
     "VGT": {
-      "qty": 352.2065,
-      "costPrice": 80.572053338,
-      "costBasis": 28378.000904,
-      "closePrice": 118.08,
-      "mktValue": 41588.54,
-      "unrealPL": 13210.539095
+      "qty": 357.1628,
+      "costPrice": 81.076113669,
+      "costBasis": 28957.371771,
+      "closePrice": 113.1,
+      "mktValue": 40395.11,
+      "unrealPL": 11437.738229
     }
   },
   "dividends": [
