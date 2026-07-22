@@ -1462,59 +1462,59 @@
   "openPositions": {
     "DGRO": {
       "qty": 164.4543,
-      "costPrice": 64.68475437,
-      "costBasis": 10638.69,
-      "closePrice": 76.8199997,
-      "mktValue": 12633.38,
-      "unrealPL": 1995.69
+      "costPrice": 64.688605382,
+      "costBasis": 10638.319316,
+      "closePrice": 76.86,
+      "mktValue": 12639.96,
+      "unrealPL": 2001.64068
     },
     "FBTC": {
       "qty": 16.4469,
-      "costPrice": 65.73417483,
-      "costBasis": 1081.13,
-      "closePrice": 57.90000155,
-      "mktValue": 952.28,
-      "unrealPL": -128.85
+      "costPrice": 65.751445318,
+      "costBasis": 1081.407446,
+      "closePrice": 57.83,
+      "mktValue": 951.12,
+      "unrealPL": -130.287447
     },
     "QQQM": {
       "qty": 129.9493,
-      "costPrice": 222.8916462,
-      "costBasis": 28964.61,
-      "closePrice": 291.3699951,
-      "mktValue": 37863.33,
-      "unrealPL": 8898.71
+      "costPrice": 222.896464929,
+      "costBasis": 28965.23959,
+      "closePrice": 291.9,
+      "mktValue": 37932.2,
+      "unrealPL": 8966.960412
     },
     "SCHD": {
       "qty": 419.0686,
-      "costPrice": 28.37206605,
-      "costBasis": 11889.84,
-      "closePrice": 32.8199997,
+      "costPrice": 28.373766777,
+      "costBasis": 11890.55472,
+      "closePrice": 32.82,
       "mktValue": 13753.83,
-      "unrealPL": 1863.99
+      "unrealPL": 1863.27528
     },
     "SMH": {
       "qty": 21.1987,
-      "costPrice": 392.87210536,
-      "costBasis": 8328.38,
-      "closePrice": 581.5,
-      "mktValue": 12327.04,
-      "unrealPL": 3998.67
+      "costPrice": 396.577396633,
+      "costBasis": 8406.925258,
+      "closePrice": 584.08,
+      "mktValue": 12381.74,
+      "unrealPL": 3974.814742
     },
     "SPYL": {
       "qty": 1905.8045,
-      "costPrice": 15.13318932,
-      "costBasis": 28840.9,
-      "closePrice": 18.55200005,
+      "costPrice": 15.135679654,
+      "costBasis": 28845.646396,
+      "closePrice": 18.552,
       "mktValue": 35356.49,
-      "unrealPL": 6515.58
+      "unrealPL": 6510.843604
     },
     "VGT": {
       "qty": 357.1628,
-      "costPrice": 81.07439745,
-      "costBasis": 28956.76,
-      "closePrice": 115.87000275,
-      "mktValue": 41384.45,
-      "unrealPL": 12427.7
+      "costPrice": 81.076113669,
+      "costBasis": 28957.371771,
+      "closePrice": 116.01,
+      "mktValue": 41434.46,
+      "unrealPL": 12477.088229
     }
   },
   "dividends": [
@@ -4344,6 +4344,5 @@
       "sharesAdded": 296.0279,
       "desc": "VGT(US92204A7028) Split 8 for 1 (VGT, VANGUARD INFO TECH ETF, US92204A7028)"
     }
-  ],
-  "lastIbkrSync": "2026-07-22T13:33:00+08:00"
+  ]
 }
