@@ -1274,7 +1274,7 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       totalLiveUnreal += unrealPL;
 
       // Update the card stats
-      const card     = el(`inv-sym-${sym}`);
+      const card   = el(`inv-sym-${sym}`);
       if (!card) continue;
       const mktEl  = el(`live-mkt-${sym}`);
       const unrEl  = el(`live-unreal-${sym}`);
@@ -1301,7 +1301,18 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       }
     }
 
-    // Update summary: convert live USD total to SGD using live USDSGD rate
+    // Update holdings summary totals
+    const holdMkt = el('hold-mkt');
+    const holdPl  = el('hold-pl');
+    if (holdMkt) holdMkt.textContent = fmt(totalLiveMkt);
+    if (holdPl) {
+      const realPLAll = (ibData.trades||[]).filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
+      const totalPLLive = totalLiveUnreal + realPLAll;
+      const costAll = Object.values(openPositions).reduce((s,p) => s+(p.costBasis||0), 0);
+      const pctAll  = costAll > 0 ? (totalPLLive/costAll*100).toFixed(1) : '0.0';
+      holdPl.textContent = `${totalPLLive>0?'+':''}${fmt(totalPLLive)} (${pctAll}%)`;
+      holdPl.className   = `sgd-val ${totalPLLive>=0?'pos':'neg'}`;
+    }
     const mktEl  = el('sum-mkt');
     const unrEl  = el('sum-unreal');
     const retEl  = el('sum-return');
@@ -1526,7 +1537,21 @@ function renderInvesting(container) {
         <span class="pie-pct">${(d.val/totalMv*100).toFixed(1)}%</span>
       </div>`).join('');
 
+    const totalRealPLAll = trades.filter(t => t.qty < 0).reduce((s, t) => s + (t.realPL||0), 0);
+    const totalPLAll     = totalUnreal + totalRealPLAll;
+    const totalPLPct     = totalCostBasis > 0 ? (totalPLAll / totalCostBasis * 100).toFixed(1) : '0.0';
+    const totalDiv       = (dividends || []).reduce((s, d) => s + d.amount, 0);
+
     subContent = `
+      <div class="sgd-grid" style="margin-bottom:12px">
+        <div class="sgd-cell"><div class="sgd-lbl">Amount Invested</div><div class="sgd-val pos">${fmt(totalCostBasis)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Market Value</div><div class="sgd-val" id="hold-mkt">${fmt(totalMktVal)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Total P&L</div><div class="sgd-val ${totalPLAll>=0?'pos':'neg'}" id="hold-pl">${totalPLAll>0?'+':''}${fmt(totalPLAll)} (${totalPLPct}%)</div></div>
+        <div class="sgd-divider"></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Unrealised</div><div class="sgd-val ${totalUnreal>=0?'pos':'neg'}">${totalUnreal>0?'+':''}${fmt(totalUnreal)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Realised</div><div class="sgd-val ${totalRealPLAll>=0?'pos':'neg'}">${totalRealPLAll>0?'+':''}${fmt(totalRealPLAll)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Dividends</div><div class="sgd-val pos">${fmt(totalDiv)}</div></div>
+      </div>
       <div class="holdings-pie-card">
         <canvas id="holdingsPie" aria-label="Holdings allocation"></canvas>
         <div class="pie-legend" id="pieLegend">${legendHtml}</div>
