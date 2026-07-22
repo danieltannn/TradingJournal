@@ -1062,6 +1062,13 @@ window.runCalc = function(val) {
   }
 };
 
+// ── Previous investment winnings (hardcoded, deducted from SGD deposits) ──
+const PREV_WINNINGS_SGD = [
+  { amount: 811.84,   label: 'Endowus' },
+  { amount: 20075.66, label: 'Syfe Trade' },
+];
+const PREV_WINNINGS_TOTAL = PREV_WINNINGS_SGD.reduce((s, w) => s + w.amount, 0); // 20887.50
+
 // ── Options section (embedded inside Investing) ────────────────────────────
 function buildOptionsSection() {
   const optTrades   = ibData.optionTrades     || [];
@@ -1314,7 +1321,7 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       const liveR   = usdsgd || fxR;
       const pSgd    = liveR > 0 ? totalLiveMkt * liveR : 0;
       const dSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
-      const oSgd    = dSgd - (ibData.prevWinningsSgd||0);
+      const oSgd    = dSgd - (PREV_WINNINGS_TOTAL);
       const plSgdL  = pSgd - oSgd;
       const costAll = Object.values(openPositions).reduce((s,p)=>s+(p.costBasis||0),0);
       const pctAll  = costAll > 0 ? (totalPLLive/costAll*100).toFixed(1) : '0.0';
@@ -1333,7 +1340,7 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
     const liveRate = usdsgd || histRate;
     if (liveRate > 0) {
       const liveSgd   = totalLiveMkt * liveRate;
-      const prevWin   = ibData.prevWinningsSgd || 0;
+      const prevWin   = PREV_WINNINGS_TOTAL;
       const netSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
       const origSgd   = netSgd - prevWin;
       const plSgd     = liveSgd - origSgd;
@@ -1417,7 +1424,7 @@ function renderInvesting(container) {
   });
 
   // SGD portfolio using historical rate (live rate updates after Yahoo Finance fetch)
-  const prevWin    = ibData.prevWinningsSgd || 0;
+  const prevWin    = PREV_WINNINGS_TOTAL;
   const origSgd    = sgdNet - prevWin;
   const portSgd    = histRate > 0 ? totalMktVal * histRate : 0;
   const plSgd      = portSgd - origSgd;
@@ -1439,10 +1446,15 @@ function renderInvesting(container) {
       </div>
       <div class="inv-acct-divider"></div>
       <div class="inv-acct-row inv-acct-3">
-        <div class="inv-acct-item">
-          <div class="sgd-lbl">Original Amount</div>
+        <div class="inv-acct-item" onclick="toggleOrigBreakdown(event)" style="cursor:pointer;position:relative">
+          <div class="sgd-lbl">Original Amount <i class="ti ti-info-circle" style="font-size:10px;opacity:.6"></i></div>
           <div class="sgd-val">${fmtSgd(origSgd)}</div>
-          ${prevWin > 0 ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">less ${fmtSgd(prevWin)} prev winnings</div>` : ''}
+          <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">Net SGD less prev winnings</div>
+          <div id="orig-breakdown" style="display:none;position:absolute;left:0;top:100%;z-index:50;background:var(--bg);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;min-width:200px;box-shadow:0 4px 16px rgba(0,0,0,.4);margin-top:4px">
+            <div style="font-weight:600;margin-bottom:6px;color:var(--text)">Previous winnings deducted</div>
+            ${PREV_WINNINGS_SGD.map(w => `<div style="display:flex;justify-content:space-between;gap:16px;padding:3px 0;color:var(--text-secondary)"><span>${w.label}</span><span class="neg">- ${fmtSgd(w.amount)}</span></div>`).join('')}
+            <div style="border-top:0.5px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:600;color:var(--text)"><span>Total deducted</span><span class="neg">- ${fmtSgd(PREV_WINNINGS_TOTAL)}</span></div>
+          </div>
         </div>
         <div class="inv-acct-item">
           <div class="sgd-lbl">Portfolio (SGD)</div>
@@ -1613,6 +1625,20 @@ window.switchInvTab = function(i) {
   renderInvesting(el('tabContent'));
 };
 
+
+window.toggleOrigBreakdown = function(e) {
+  e.stopPropagation();
+  const box = document.getElementById('orig-breakdown');
+  if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  // Close when clicking elsewhere
+  if (box.style.display === 'block') {
+    setTimeout(() => document.addEventListener('click', function h() {
+      box.style.display = 'none';
+      document.removeEventListener('click', h);
+    }), 0);
+  }
+};
 
 window.toggleInvSym = function(sym) {
   const card = el(`inv-sym-${sym}`);
