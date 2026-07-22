@@ -1489,8 +1489,6 @@ function renderInvesting(container) {
                 <span>${pos.qty.toFixed(2)} sh</span>
                 <span class="inv-sep">·</span>
                 <span>avg $${(pos.costPrice||0).toFixed(2)}</span>
-                <span class="inv-sep">·</span>
-                <span>${buyCount}B${sellCount?` ${sellCount}S`:''}</span>
               </div>
             </div>
             <div class="inv-sym-right">
