@@ -1277,14 +1277,15 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       const unrEl = el(`live-unreal-${sym}`);
       if (mktEl) mktEl.textContent = fmt(mktVal);
       if (unrEl) {
+        // Market Value = live price × shares; P&L = mktVal - costBasis
         const symTrades  = (ibData.trades||[]).filter(t => t.symbol === sym);
         const realPL     = symTrades.filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
-        const totalPL    = unrealPL + realPL;
+        const liveUnreal = mktVal - pos.costBasis;        // recalculate from live price
+        const totalPL    = liveUnreal + realPL;
         const totalPLPct = pos.costBasis > 0 ? (totalPL/pos.costBasis*100).toFixed(1) : '0.0';
-        unrEl.textContent = `${totalPL > 0 ? '+' : ''}${fmt(totalPL)}`;
-        unrEl.className   = `inv-stat-val ${totalPL >= 0 ? 'pos' : 'neg'}`;
-        const pctEl = el(`live-unreal-pct-${sym}`);
-        if (pctEl) { pctEl.textContent = `${totalPLPct}%`; pctEl.className = totalPL >= 0 ? 'pos' : 'neg'; }
+        const cls        = totalPL >= 0 ? 'pos' : 'neg';
+        unrEl.innerHTML  = `${totalPL > 0 ? '+' : ''}${fmt(totalPL)} <span id="live-unreal-pct-${sym}" style="font-size:10px;font-weight:500">(${totalPLPct}%)</span>`;
+        unrEl.className  = `inv-stat-val ${cls}`;
       }
 
       // Live price badge
@@ -1408,7 +1409,7 @@ function renderInvesting(container) {
   });
 
   // SGD portfolio using historical rate (live rate updates after Yahoo Finance fetch)
-  const prevWin    = ibData.prevWinningsSgd || 0;
+  const prevWin    = PREV_WINNINGS_TOTAL;   // always deduct Endowus + Syfe Trade
   const origSgd    = sgdNet - prevWin;
   const portSgd    = histRate > 0 ? totalMktVal * histRate : 0;
   const plSgd      = portSgd - origSgd;
@@ -1511,8 +1512,7 @@ function renderInvesting(container) {
               </div>
               <div class="inv-stat">
                 <span class="inv-stat-label">Total P&L</span>
-                <span class="inv-stat-val ${totalPL>=0?'pos':'neg'}" id="live-unreal-${sym}">${totalPL>0?'+':''}${fmt(totalPL)}</span>
-                <span style="font-size:10.5px;margin-top:1px" class="${totalPL>=0?'pos':'neg'}" id="live-unreal-pct-${sym}">${totalPct}%</span>
+                <span class="inv-stat-val ${totalPL>=0?'pos':'neg'}" id="live-unreal-${sym}">${totalPL>0?'+':''}${fmt(totalPL)} <span id="live-unreal-pct-${sym}" style="font-size:10px;font-weight:500">(${totalPct}%)</span></span>
               </div>
               <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
             </div>
