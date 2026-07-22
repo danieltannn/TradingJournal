@@ -1240,143 +1240,98 @@ function renderOptChart() {
 // so we fetch it separately and use the IB cost basis for P&L estimation.
 const YF_MAP = { DGRO:'DGRO', FBTC:'FBTC', QQQM:'QQQM', SCHD:'SCHD', SMH:'SMH', VGT:'VGT', SPYL:'SPYL.L' };
 
-// Fetch one ticker price from Yahoo Finance v8 chart endpoint
-async function fetchYFPrice(yfSym) {
-  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${yfSym}?interval=1d&range=1d`;
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${yfSym} HTTP ${res.status}`);
-  const d = await res.json();
-  const meta = d?.chart?.result?.[0]?.meta;
-  if (!meta) throw new Error(`No data for ${yfSym}`);
-  return { price: meta.regularMarketPrice, currency: meta.currency };
-}
-
+// ── Live prices from prices.json (updated by GitHub Actions) ─────────────
 async function fetchAndUpdateLivePrices(tickers, openPositions) {
-  // Show loading indicator
   const statusEl = el('ib-status');
-  if (statusEl) { statusEl.textContent = '⏳ Fetching live prices…'; statusEl.style.display = 'block'; }
+  const show = msg => { if (statusEl) { statusEl.textContent = msg; statusEl.style.display = 'block'; } };
+  const hide = () => setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 4000);
 
-  // Get GBP/USD and USD/SGD from frankfurter first (reliable)
-  let gbpusd = 1, usdsgd = 0;
   try {
-    const fx = await fetch('https://api.frankfurter.app/latest?from=USD&to=GBP,SGD', { cache: 'no-store' });
-    if (fx.ok) {
-      const fxd = await fx.json();
-      gbpusd = fxd.rates?.GBP ? 1 / fxd.rates.GBP : 1;
-      usdsgd = fxd.rates?.SGD || 0;
-    }
-  } catch(_) {}
+    show('⏳ Loading live prices…');
+    const res = await fetch(
+      `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/prices.json?t=${Date.now()}`,
+      { cache: 'no-store' }
+    );
+    if (!res.ok) throw new Error('prices.json not found — run the GitHub Action first');
+    const data = await res.json();
 
-  // Fetch each ticker individually from Yahoo Finance v8
-  const livePrices = {};
-  const errors = [];
-  await Promise.allSettled(tickers.map(async sym => {
-    const yfSym = YF_MAP[sym];
-    if (!yfSym) return;
-    try {
-      const { price, currency } = await fetchYFPrice(yfSym);
-      const inUsd = currency === 'GBp' ? price / 100 * gbpusd
-                  : currency === 'GBP' ? price * gbpusd
-                  : price;
-      livePrices[sym] = inUsd;
-    } catch(e) {
-      errors.push(sym);
-    }
-  }));
+    const { prices, usdsgd, timestamp } = data;
+    if (!prices || Object.keys(prices).length === 0) throw new Error('No prices in prices.json yet');
 
-  const successCount = Object.keys(livePrices).length;
-  if (successCount === 0) {
-    if (statusEl) { statusEl.textContent = '⚠️ Live prices unavailable — showing last import data'; setTimeout(() => { statusEl.style.display = 'none'; }, 5000); }
-    return;
-  }
-  if (statusEl) { statusEl.textContent = `✓ Live prices loaded (${successCount}/${tickers.length})${errors.length ? ` · ${errors.join(',')} unavailable` : ''}`; setTimeout(() => { statusEl.style.display = 'none'; }, 4000); }
+    const updated = timestamp ? new Date(timestamp).toLocaleString() : 'unknown';
+    let totalLiveMkt = 0, totalLiveUnreal = 0, loaded = 0;
 
-    // Update each ticker card in the DOM
-    let totalLiveMkt = 0, totalLiveUnreal = 0;
     for (const sym of tickers) {
-      const price = livePrices[YF_MAP[sym]];
+      const price = prices[sym];
       const pos   = openPositions[sym];
       if (!price || !pos) continue;
-      const mktVal  = price * pos.qty;
+      loaded++;
+      const mktVal   = price * pos.qty;
       const unrealPL = mktVal - pos.costBasis;
       const pct      = pos.costBasis > 0 ? ((unrealPL / pos.costBasis) * 100).toFixed(1) : 0;
       totalLiveMkt   += mktVal;
       totalLiveUnreal += unrealPL;
 
-      // Update the card stats
-      const card   = el(`inv-sym-${sym}`);
-      if (!card) continue;
-      const mktEl  = el(`live-mkt-${sym}`);
-      const unrEl  = el(`live-unreal-${sym}`);
+      // Update ticker card
+      const mktEl = el(`live-mkt-${sym}`);
+      const unrEl = el(`live-unreal-${sym}`);
       if (mktEl) mktEl.textContent = fmt(mktVal);
-      if (unrEl) {
-        unrEl.textContent = `${unrealPL > 0 ? '+' : ''}${fmt(unrealPL)} (${pct}%)`;
-        unrEl.className   = `inv-stat-val ${unrealPL >= 0 ? 'pos' : 'neg'}`;
-      }
-      // Update avg cost with live price
-      const meta = card.querySelector('.inv-sym-meta');
-      if (meta) {
-        const spans = meta.querySelectorAll('span');
-        // Add live price badge after the last span
-        const existing = meta.querySelector('.live-price');
-        if (!existing) {
-          const badge = document.createElement('span');
-          badge.className = 'live-price badge open';
-          badge.style.cssText = 'font-size:10px;padding:2px 5px;margin-left:4px';
+      if (unrEl) { unrEl.textContent = `${unrealPL>0?'+':''}${fmt(unrealPL)} (${pct}%)`; unrEl.className = `inv-stat-val ${unrealPL>=0?'pos':'neg'}`; }
+
+      // Live price badge
+      const card = el(`inv-sym-${sym}`);
+      if (card) {
+        const meta = card.querySelector('.inv-sym-meta');
+        if (meta) {
+          let badge = meta.querySelector('.live-price');
+          if (!badge) { badge = document.createElement('span'); badge.className = 'live-price badge open'; badge.style.cssText = 'font-size:10px;padding:2px 5px;margin-left:4px'; meta.appendChild(badge); }
           badge.textContent = `$${price.toFixed(2)} live`;
-          meta.appendChild(badge);
-        } else {
-          existing.textContent = `$${price.toFixed(2)} live`;
         }
       }
     }
 
-    // Update holdings summary totals
+    // Update holdings summary
     const holdMkt = el('hold-mkt');
     const holdPl  = el('hold-pl');
+    const holdPlPct = el('hold-pl-pct');
     if (holdMkt) holdMkt.textContent = fmt(totalLiveMkt);
     if (holdPl) {
-      const realPLAll   = (ibData.trades||[]).filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
+      const realPLAll = (ibData.trades||[]).filter(t=>t.qty<0).reduce((s,t)=>s+(t.realPL||0),0);
       const totalPLLive = totalLiveUnreal + realPLAll;
-      // Use same % base as top: SGD P&L / original SGD amount
-      const fxL     = (ibData.forexTrades||[]).filter(f=>f.usdAmt>0);
-      const fxR     = fxL.length>0 ? fxL.reduce((s,f)=>s+Math.abs(f.sgdAmt),0)/fxL.reduce((s,f)=>s+f.usdAmt,0) : 0;
-      const liveR   = usdsgd || fxR;
-      const pSgd    = liveR > 0 ? totalLiveMkt * liveR : 0;
-      const dSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
-      const oSgd    = dSgd - PREV_WINNINGS_TOTAL;
-      const plSgdL  = pSgd - oSgd;
       const costAll = Object.values(openPositions).reduce((s,p)=>s+(p.costBasis||0),0);
       const pctAll  = costAll > 0 ? (totalPLLive/costAll*100).toFixed(1) : '0.0';
       holdPl.textContent = `${totalPLLive>0?'+':''}${fmt(totalPLLive)}`;
       holdPl.className   = `sgd-val ${totalPLLive>=0?'pos':'neg'}`;
-      const holdPlPct = el('hold-pl-pct');
-      if (holdPlPct) { holdPlPct.textContent = `${pctAll>0?'+':''}${pctAll}%`; holdPlPct.className = totalPLLive>=0?'pos':'neg'; };
+      if (holdPlPct) { holdPlPct.textContent = `${pctAll>0?'+':''}${pctAll}%`; holdPlPct.className = totalPLLive>=0?'pos':'neg'; }
     }
-    const mktEl  = el('sum-mkt');
-    const unrEl  = el('sum-unreal');
-    const retEl  = el('sum-return');
-    const fxList = (ibData.forexTrades||[]).filter(f => f.usdAmt > 0);
-    const histRate = fxList.length > 0
-      ? fxList.reduce((s,f)=>s+Math.abs(f.sgdAmt),0) / fxList.reduce((s,f)=>s+f.usdAmt,0)
-      : 0;
-    const liveRate = usdsgd || histRate;
-    if (liveRate > 0) {
-      const liveSgd   = totalLiveMkt * liveRate;
-      const prevWin   = PREV_WINNINGS_TOTAL;
-      const netSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
-      const origSgd   = netSgd - prevWin;
-      const plSgd     = liveSgd - origSgd;
-      const plPct     = origSgd > 0 ? (plSgd / origSgd * 100).toFixed(1) : '0.0';
-      const fmtS      = n => 'S$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
-      const rateLabel = usdsgd ? `live 1 USD = S$${usdsgd.toFixed(4)}` : `avg S$${histRate.toFixed(4)}`;
-      if (mktEl) mktEl.innerHTML = `${fmtS(liveSgd)}<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${fmt(totalLiveMkt)} USD · ${rateLabel}</div>`;
-      if (unrEl) { unrEl.textContent = `${plSgd>0?'+':''}${fmtS(plSgd)}`; unrEl.className = `sgd-val ${plSgd>=0?'pos':'neg'}`; }
-      if (retEl) { retEl.textContent = `${plPct>0?'+':''}${plPct}%`; retEl.className = plSgd>=0?'pos':'neg'; }
+
+    // Update SGD portfolio
+    if (usdsgd > 0) {
+      const liveSgd  = totalLiveMkt * usdsgd;
+      const netSgd   = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
+      const origSgd  = netSgd - PREV_WINNINGS_TOTAL;
+      const plSgd    = liveSgd - origSgd;
+      const plPct    = origSgd > 0 ? (plSgd/origSgd*100).toFixed(1) : '0.0';
+      const fS       = n => 'S$' + Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+      const mktEl    = el('sum-mkt');
+      const rateEl   = el('sum-rate');
+      const unrEl    = el('sum-unreal');
+      const retEl    = el('sum-return');
+      if (mktEl)  mktEl.textContent  = fS(liveSgd);
+      if (rateEl) rateEl.textContent = `${fmt(totalLiveMkt)} USD · live 1 USD = S$${usdsgd.toFixed(4)}`;
+      if (unrEl)  { unrEl.textContent = `${plSgd>0?'+':''}${fS(plSgd)}`; unrEl.className = `sgd-val ${plSgd>=0?'pos':'neg'}`; }
+      if (retEl)  { retEl.textContent = `${plPct>0?'+':''}${plPct}%`; retEl.className = plSgd>=0?'pos':'neg'; }
     }
+
+    show(`✓ Live prices loaded (${loaded}/${tickers.length}) · updated ${updated}`);
+    hide();
+  } catch(e) {
+    show(`⚠️ ${e.message}`);
+    hide();
+  }
 }
 
-// frankfurter.app now handled inside fetchAndUpdateLivePrices
+
 
 // ── Investing tab ──────────────────────────────────────────────────────────
 let activeInvTab = 0; // 0=Holdings, 1=Calculator, 2=Past Options
