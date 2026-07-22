@@ -1461,60 +1461,60 @@
   ],
   "openPositions": {
     "DGRO": {
-      "qty": 164.4543,
-      "costPrice": 64.688605382,
-      "costBasis": 10638.319316,
-      "closePrice": 76.86,
-      "mktValue": 12639.96,
-      "unrealPL": 2001.64068
+      "qty": 151.1943,
+      "costPrice": 63.966611737,
+      "costBasis": 9671.387085,
+      "closePrice": 69.42,
+      "mktValue": 10495.91,
+      "unrealPL": 824.522914
     },
     "FBTC": {
-      "qty": 16.4469,
-      "costPrice": 65.751445318,
-      "costBasis": 1081.407446,
-      "closePrice": 57.83,
-      "mktValue": 951.12,
-      "unrealPL": -130.287447
+      "qty": 2.5245,
+      "costPrice": 76.602182214,
+      "costBasis": 193.382209,
+      "closePrice": 76.23,
+      "mktValue": 192.44,
+      "unrealPL": -0.942209
     },
     "QQQM": {
-      "qty": 129.9493,
-      "costPrice": 222.896464929,
-      "costBasis": 28965.23959,
-      "closePrice": 291.9,
-      "mktValue": 37932.2,
-      "unrealPL": 8966.960412
+      "qty": 112.7154,
+      "costPrice": 216.524945793,
+      "costBasis": 24405.695875,
+      "closePrice": 252.92,
+      "mktValue": 28507.98,
+      "unrealPL": 4102.284123
     },
     "SCHD": {
-      "qty": 419.0686,
-      "costPrice": 28.373766777,
-      "costBasis": 11890.55472,
-      "closePrice": 32.82,
-      "mktValue": 13753.83,
-      "unrealPL": 1863.27528
+      "qty": 356.5369,
+      "costPrice": 27.916774558,
+      "costBasis": 9953.360259,
+      "closePrice": 27.43,
+      "mktValue": 9779.81,
+      "unrealPL": -173.550258
     },
     "SMH": {
-      "qty": 21.1987,
-      "costPrice": 396.577396633,
-      "costBasis": 8406.925258,
-      "closePrice": 584.08,
-      "mktValue": 12381.74,
-      "unrealPL": 3974.814742
+      "qty": 19.2511,
+      "costPrice": 253.79890853,
+      "costBasis": 4885.908168,
+      "closePrice": 360.13,
+      "mktValue": 6932.9,
+      "unrealPL": 2046.991832
     },
     "SPYL": {
-      "qty": 1905.8045,
-      "costPrice": 15.135679654,
-      "costBasis": 28845.646396,
-      "closePrice": 18.552,
-      "mktValue": 35356.49,
-      "unrealPL": 6510.843604
+      "qty": 1645.8795,
+      "costPrice": 14.780265295,
+      "costBasis": 24326.535654,
+      "closePrice": 16.95,
+      "mktValue": 27897.66,
+      "unrealPL": 3571.124349
     },
     "VGT": {
-      "qty": 357.1628,
-      "costPrice": 81.076113669,
-      "costBasis": 28957.371771,
-      "closePrice": 116.01,
-      "mktValue": 41434.46,
-      "unrealPL": 12477.088229
+      "qty": 38.9397,
+      "costPrice": 626.641569735,
+      "costBasis": 24401.234733,
+      "closePrice": 753.78,
+      "mktValue": 29351.97,
+      "unrealPL": 4950.735265
     }
   },
   "dividends": [
