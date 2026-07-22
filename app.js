@@ -995,43 +995,34 @@ function buildCalculator() {
     </tr>`).join('');
 
   return `
-    <div class="dep-section calc-section">
-      <div class="dep-section-header calc-toggle" onclick="this.closest('.calc-section').classList.toggle('calc-open')">
-        <i class="ti ti-calculator" aria-hidden="true"></i> Investment Calculator
-        <span class="dep-count">DGRO 5% · FBTC 5% · QQQM 25% · SCHD 10% · SMH 5% · SPYL 25% · VGT 25%</span>
-        <i class="ti ti-chevron-down" style="margin-left:auto;font-size:14px;color:var(--text-tertiary)" aria-hidden="true"></i>
-      </div>
-      <div class="calc-body">
-        <div class="calc-input-row">
-          <span class="calc-currency">$</span>
-          <input id="calcInput" type="number" min="0" step="100"
-            placeholder="Enter amount to invest (USD)"
-            oninput="runCalc(this.value)"
-            style="flex:1;background:var(--bg);border:none;padding:9px 12px;
-                   font-size:15px;color:var(--text);outline:none;-moz-appearance:textfield">
-        </div>
-        <div class="tbl-wrap" style="margin-top:10px">
-          <table>
-            <thead><tr>
-              <th>Ticker</th><th>Alloc</th><th>Allocated</th>
-              <th>Est. Comm</th><th>Into Shares</th><th>Est. Shares</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-            <tfoot>
-              <tr id="calc-foot" style="display:none">
-                <td colspan="2" style="color:var(--text-secondary);font-size:11.5px;font-weight:600">TOTAL</td>
-                <td class="pos mono" id="calc-tot-gross"></td>
-                <td class="neg mono" id="calc-tot-comm"></td>
-                <td class="pos mono" id="calc-tot-net"></td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <div style="margin-top:8px;font-size:11px;color:var(--text-tertiary);padding:0 2px">
-          Commissions based on your actual IB trade history. SPYL is higher due to LSE exchange fees.
-        </div>
-      </div>
+    <div class="calc-input-row" style="margin-bottom:12px">
+      <span class="calc-currency">$</span>
+      <input id="calcInput" type="number" min="0" step="100"
+        placeholder="Enter amount to invest (USD)"
+        oninput="runCalc(this.value)"
+        style="flex:1;background:var(--bg);border:none;padding:9px 12px;
+               font-size:15px;color:var(--text);outline:none;-moz-appearance:textfield">
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr>
+          <th>Ticker</th><th>Alloc</th><th>Allocated</th>
+          <th>Est. Comm</th><th>Into Shares</th><th>Est. Shares</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr id="calc-foot" style="display:none">
+            <td colspan="2" style="color:var(--text-secondary);font-size:11.5px;font-weight:600">TOTAL</td>
+            <td class="pos mono" id="calc-tot-gross"></td>
+            <td class="neg mono" id="calc-tot-comm"></td>
+            <td class="pos mono" id="calc-tot-net"></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div style="margin-top:8px;font-size:11px;color:var(--text-tertiary)">
+      Commissions based on your actual IB trade history. SPYL higher due to LSE fees.
     </div>`;
 }
 
@@ -1178,31 +1169,25 @@ function buildOptionsSection() {
   window._optChartData = { months, monthly };
 
   return `
-    <div class="dep-section opts-section">
-      <div class="dep-section-header opts-toggle" onclick="this.closest('.opts-section').classList.toggle('opts-open')">
-        <i class="ti ti-chart-candle" aria-hidden="true"></i> Past Options Trading
-        <span class="dep-count">${totalContracts} contracts · ${Object.keys(byUl).length} underlyings</span>
-        <i class="ti ti-chevron-down" style="margin-left:auto;font-size:14px;color:var(--text-tertiary)" aria-hidden="true"></i>
+    <div class="inv-account-details" style="margin-bottom:12px">
+      <div class="inv-acct-row">
+        <div class="inv-acct-item"><div class="sgd-lbl">Realized P&L</div>
+          <div class="sgd-val ${totalPL >= 0 ? 'pos' : 'neg'}">${totalPL > 0 ? '+' : ''}${fmt(totalPL)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Winners / Losers</div>
+          <div class="sgd-val"><span class="pos">${winners}</span> / <span class="neg">${losers}</span></div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Commissions</div>
+          <div class="sgd-val neg">${fmt(totalComm)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Assignments</div>
+          <div class="sgd-val">${assignStock.filter(t=>t.qty>0).length}</div></div>
       </div>
-      <div class="opts-body">
-        <div class="opt-summary-grid">
-          <div class="metric"><div class="label">Realized P&L</div>
-            <div class="value ${totalPL >= 0 ? 'pos' : 'neg'}">${totalPL > 0 ? '+' : ''}${fmt(totalPL)}</div></div>
-          <div class="metric"><div class="label">Winners / Losers</div>
-            <div class="value"><span class="pos">${winners}</span> / <span class="neg">${losers}</span></div></div>
-          <div class="metric"><div class="label">Commissions</div><div class="value neg">${fmt(totalComm)}</div></div>
-          <div class="metric"><div class="label">Assignments</div>
-            <div class="value">${assignStock.filter(t=>t.qty>0).length}</div></div>
-        </div>
-        <div class="chart-card" style="margin-bottom:12px">
-          <h3>Monthly Options P&L</h3>
-          <div style="position:relative;height:140px">
-            <canvas id="optMonthChart" role="img" aria-label="Monthly options P&L"></canvas>
-          </div>
-        </div>
-        <div class="inv-holdings">${ulCards}</div>
+    </div>
+    <div class="chart-card" style="margin-bottom:12px">
+      <h3>Monthly Options P&L</h3>
+      <div style="position:relative;height:140px">
+        <canvas id="optMonthChart" role="img" aria-label="Monthly options P&L"></canvas>
       </div>
-    </div>`;
+    </div>
+    <div class="inv-holdings">${ulCards}</div>`;
 }
 
 window.toggleOptUl = function(ul) {
@@ -1288,15 +1273,14 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       totalLiveUnreal += unrealPL;
 
       // Update the card stats
-      const card = el(`inv-sym-${sym}`);
+      const card     = el(`inv-sym-${sym}`);
       if (!card) continue;
-      const stats = card.querySelectorAll('.inv-stat');
-      // stats order: Amount Invested, Mkt Value, Unreal P&L, Comm
-      if (stats[1]) stats[1].querySelector('.inv-stat-val').textContent = fmt(mktVal);
-      if (stats[2]) {
-        const v = stats[2].querySelector('.inv-stat-val');
-        v.textContent = `${unrealPL > 0 ? '+' : ''}${fmt(unrealPL)} (${pct}%)`;
-        v.className   = `inv-stat-val ${unrealPL >= 0 ? 'pos' : 'neg'}`;
+      const mktEl  = el(`live-mkt-${sym}`);
+      const unrEl  = el(`live-unreal-${sym}`);
+      if (mktEl) mktEl.textContent = fmt(mktVal);
+      if (unrEl) {
+        unrEl.textContent = `${unrealPL > 0 ? '+' : ''}${fmt(unrealPL)} (${pct}%)`;
+        unrEl.className   = `inv-stat-val ${unrealPL >= 0 ? 'pos' : 'neg'}`;
       }
       // Update avg cost with live price
       const meta = card.querySelector('.inv-sym-meta');
@@ -1460,22 +1444,38 @@ function renderInvesting(container) {
     const tickerRows = CURRENT_TICKERS.map(sym => {
       const pos = openPositions[sym];
       if (!pos) return '';
-      const pct = pos.costBasis > 0 ? ((pos.unrealPL / pos.costBasis) * 100).toFixed(1) : null;
-      const buyCount = trades.filter(t => t.symbol === sym && t.qty > 0).length;
-      const comm = trades.filter(t => t.symbol === sym).reduce((s, t) => s + Math.abs(t.comm), 0);
+      const unrealPct = pos.costBasis > 0 ? ((pos.unrealPL / pos.costBasis) * 100).toFixed(1) : null;
       const split = splitMap[sym];
+      // All trades: buys and sells
+      const allTrades = trades.filter(t => t.symbol === sym)
+        .sort((a, b) => (a.dateRaw || '').localeCompare(b.dateRaw || ''));
+      const totalRealPL = allTrades.filter(t => t.qty < 0).reduce((s, t) => s + t.realPL, 0);
+      const buyCount  = allTrades.filter(t => t.qty > 0).length;
+      const sellCount = allTrades.filter(t => t.qty < 0).length;
+
+      const tradeRows = allTrades.map(t => {
+        const isBuy = t.qty > 0;
+        return `<tr>
+          <td>${(t.dateRaw || '').slice(0, 10)}</td>
+          <td><span class="badge ${isBuy ? 'open' : 'closed'}">${isBuy ? 'BUY' : 'SELL'}</span></td>
+          <td class="mono">${Math.abs(t.qty).toFixed(4)}</td>
+          <td class="mono">$${t.tPrice.toFixed(2)}</td>
+          <td class="${isBuy ? 'neg' : 'pos'}">$${Math.abs(t.proceeds).toFixed(2)}</td>
+          <td class="neg">$${Math.abs(t.comm).toFixed(2)}</td>
+          ${!isBuy ? `<td class="${t.realPL >= 0 ? 'pos' : 'neg'}">${t.realPL > 0 ? '+' : ''}$${t.realPL.toFixed(2)}</td>` : '<td style="color:var(--text-tertiary)">—</td>'}
+        </tr>`;
+      }).join('');
+
       return `
         <div class="inv-sym-card" id="inv-sym-${sym}">
           <div class="inv-sym-header" onclick="toggleInvSym('${sym}')">
             <div class="inv-sym-left">
               <span class="badge trade" style="font-size:12px;padding:3px 8px">${sym}</span>
-              ${split ? `<span class="badge expired" style="font-size:10px;padding:2px 6px">${split.ratio} split ${split.date}</span>` : ''}
+              ${split ? `<span class="badge expired" style="font-size:10px;padding:2px 5px">${split.ratio} split</span>` : ''}
               <div class="inv-sym-meta">
-                <span>${pos.qty.toFixed(4)} sh</span>
+                <span>${pos.qty.toFixed(2)} sh</span>
                 <span class="inv-sep">·</span>
-                <span>avg $${(pos.costPrice || 0).toFixed(2)}</span>
-                <span class="inv-sep">·</span>
-                <span>${buyCount} buys</span>
+                <span>${buyCount} buy${buyCount!==1?'s':''}${sellCount ? ' · ' + sellCount + ' sell' + (sellCount!==1?'s':'') : ''}</span>
               </div>
             </div>
             <div class="inv-sym-right">
@@ -1485,30 +1485,25 @@ function renderInvesting(container) {
               </div>
               <div class="inv-stat">
                 <span class="inv-stat-label">Mkt Val</span>
-                <span class="inv-stat-val">${fmt(pos.mktValue)}</span>
+                <span class="inv-stat-val" id="live-mkt-${sym}">${fmt(pos.mktValue)}</span>
               </div>
               <div class="inv-stat">
-                <span class="inv-stat-label">P&L</span>
-                <span class="inv-stat-val ${pos.unrealPL >= 0 ? 'pos' : 'neg'}">${pos.unrealPL > 0 ? '+' : ''}${fmt(pos.unrealPL)}${pct ? ` (${pct}%)` : ''}</span>
+                <span class="inv-stat-label">Unreal P&L</span>
+                <span class="inv-stat-val ${pos.unrealPL >= 0 ? 'pos' : 'neg'}" id="live-unreal-${sym}">${pos.unrealPL > 0 ? '+' : ''}${fmt(pos.unrealPL)}${unrealPct ? ` (${unrealPct}%)` : ''}</span>
               </div>
+              ${totalRealPL !== 0 ? `<div class="inv-stat">
+                <span class="inv-stat-label">Real P&L</span>
+                <span class="inv-stat-val ${totalRealPL >= 0 ? 'pos' : 'neg'}">${totalRealPL > 0 ? '+' : ''}${fmt(totalRealPL)}</span>
+              </div>` : ''}
               <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
             </div>
           </div>
           <div class="inv-sym-body">
             <div class="tbl-wrap" style="margin:10px 14px 14px">
-              ${split ? `<div style="font-size:11.5px;color:var(--text-secondary);padding:8px 10px;background:var(--bg-secondary);border-bottom:0.5px solid var(--border)"><i class="ti ti-info-circle" style="font-size:13px;margin-right:4px"></i>${split.ratio} split on ${split.date}. Pre-split trades show original qty &amp; price.</div>` : ''}
+              ${split ? `<div style="font-size:11px;color:var(--text-tertiary);padding:6px 10px;background:var(--bg-secondary);border-bottom:0.5px solid var(--border)"><i class="ti ti-info-circle"></i> ${split.ratio} split on ${split.date}. Pre-split trades show original qty &amp; price.</div>` : ''}
               <table>
-                <thead><tr><th>Date</th><th>Qty</th><th>Price</th><th>Cost</th><th>Comm</th></tr></thead>
-                <tbody>${trades.filter(t => t.symbol === sym && t.qty > 0)
-                  .sort((a, b) => (a.dateRaw || '').localeCompare(b.dateRaw || ''))
-                  .map(t => `<tr>
-                    <td>${(t.dateRaw || '').slice(0, 10)}</td>
-                    <td class="mono">${t.qty.toFixed(4)}</td>
-                    <td class="mono">$${t.tPrice.toFixed(4)}</td>
-                    <td class="pos">$${Math.abs(t.proceeds).toFixed(2)}</td>
-                    <td class="neg">$${Math.abs(t.comm).toFixed(2)}</td>
-                  </tr>`).join('')}
-                </tbody>
+                <thead><tr><th>Date</th><th>Type</th><th>Qty</th><th>Price</th><th>Cost/Proceeds</th><th>Comm</th><th>Real P&L</th></tr></thead>
+                <tbody>${tradeRows}</tbody>
               </table>
             </div>
           </div>
