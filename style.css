@@ -1031,3 +1031,5 @@ tr:hover td { background: var(--bg-secondary); }
   box-shadow: var(--shadow);
 }
 .inv-subtab-content { }
+
+.live-price.badge { background: rgba(210,153,34,.2) !important; color: #e3b341 !important; border: 0.5px solid rgba(210,153,34,.4) !important; }
