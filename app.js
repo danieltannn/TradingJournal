@@ -1772,122 +1772,22 @@ function parseIbCSVLine(line) {
   return result;
 }
 
-// ── IBKR Live Sync ────────────────────────────────────────────────────────
-window.syncFromIbkr = async function() {
-  let anthropicKey = localStorage.getItem('anthropic_key');
-  if (!anthropicKey) {
-    anthropicKey = await showAnthropicKeyModal();
-    if (!anthropicKey) return;
-  }
+// ── IBKR Live Sync via Claude ─────────────────────────────────────────────
+window.syncFromIbkr = function() {
+  const msg = encodeURIComponent(
+    'Sync my IBKR live positions to my Trade Tracker. ' +
+    'Fetch my current positions from IBKR and push the updated openPositions to ib.json on GitHub (danieltannn/TradingJournal). ' +
+    'Use my existing IBKR and GitHub connections.'
+  );
+  window.open('https://claude.ai/new?q=' + msg, '_blank');
 
-  const btn    = el('ibkr-sync-btn');
   const status = el('ib-status');
-  const show   = msg => { if (status) { status.textContent = msg; status.style.display = 'block'; } };
-
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Syncing…'; }
-  show('Connecting to IBKR…');
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'mcp-client-2025-04-04'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2000,
-        system: 'You are a financial data helper. Call get_account_positions from the IBKR MCP and return ONLY a raw JSON object like: {"positions":[...]} with no markdown, no explanation.',
-        messages: [{ role: 'user', content: 'Get my current IBKR open positions.' }],
-        mcp_servers: [{ type: 'url', url: 'https://api.ibkr.com/v1/api/mcp', name: 'ibkr' }]
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      if (res.status === 401) {
-        localStorage.removeItem('anthropic_key');
-        throw new Error('Invalid Anthropic API key — please try again.');
-      }
-      throw new Error(err.error?.message || `HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
-
-    // Extract positions from MCP tool result or text
-    let positions = null;
-    for (const block of data.content || []) {
-      if (block.type === 'mcp_tool_result') {
-        try { positions = JSON.parse(block.content?.[0]?.text || '').positions; } catch(_) {}
-      }
-      if (!positions && block.type === 'text') {
-        try {
-          const clean = block.text.replace(/```json|```/g, '').trim();
-          positions = JSON.parse(clean).positions;
-        } catch(_) {}
-      }
-    }
-
-    if (!positions || !positions.length) throw new Error('No position data returned from IBKR.');
-
-    show(`Got ${positions.length} positions — saving…`);
-
-    // Update openPositions
-    const newPositions = {};
-    for (const p of positions) {
-      const sym = p.contract_description.replace(/ @.*/, '').trim();
-      newPositions[sym] = {
-        qty:        p.position,
-        costPrice:  p.average_price,
-        costBasis:  +(p.average_price * p.position).toFixed(2),
-        closePrice: p.market_price,
-        mktValue:   +(p.market_value || 0),
-        unrealPL:   +(p.unrealized_pnl || 0),
-      };
-    }
-
-    const merged = { ...ibData, openPositions: newPositions, lastIbkrSync: new Date().toISOString() };
-
-    await ghPutIb(merged);
-    show(`✓ Synced ${positions.length} positions from IBKR`);
-    setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
-    renderInvesting(el('tabContent'));
-
-  } catch(e) {
-    show(`⚠️ ${e.message}`);
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Sync IBKR'; }
+  if (status) {
+    status.innerHTML = '💬 Claude opened — tap <strong>Send</strong>, wait for it to finish, then come back and pull down to refresh.';
+    status.style.display = 'block';
+    setTimeout(() => { if (status) status.style.display = 'none'; }, 14000);
   }
 };
-
-function showAnthropicKeyModal() {
-  return new Promise(resolve => {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px';
-    overlay.innerHTML = `
-      <div style="background:var(--bg);border:0.5px solid var(--border);border-radius:12px;padding:24px;max-width:380px;width:100%">
-        <div style="font-weight:600;font-size:15px;margin-bottom:8px">Anthropic API Key</div>
-        <p style="font-size:12.5px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5">
-          Required to call the IBKR connector. Get yours at
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent2)">console.anthropic.com</a>.
-          Stored locally only.
-        </p>
-        <input id="anthro-key-input" type="password" placeholder="sk-ant-…"
-          style="width:100%;background:var(--bg-secondary);border:0.5px solid var(--border);border-radius:8px;
-                 padding:10px 12px;font-size:13px;color:var(--text);outline:none;margin-bottom:12px;box-sizing:border-box">
-        <div style="display:flex;gap:8px">
-          <button onclick="this.closest('[style*=fixed]').remove();window._anthroResolve(null)"
-            style="flex:1;padding:9px;border:0.5px solid var(--border);border-radius:8px;background:none;color:var(--text-secondary);cursor:pointer">Cancel</button>
-          <button onclick="const k=document.getElementById('anthro-key-input').value.trim();if(k){localStorage.setItem('anthropic_key',k);this.closest('[style*=fixed]').remove();window._anthroResolve(k);}else{document.getElementById('anthro-key-input').focus()}"
-            style="flex:2;padding:9px;background:var(--green);border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer">Save &amp; Sync</button>
-        </div>
-      </div>`;
-    window._anthroResolve = resolve;
-    document.body.appendChild(overlay);
-    setTimeout(() => document.getElementById('anthro-key-input')?.focus(), 100);
-  });
-}
 
 // ── File handlers ──────────────────────────────────────────────────────────
 function attachFileHandlers() {
