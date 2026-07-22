@@ -1495,7 +1495,7 @@ function renderInvesting(container) {
               <span class="badge trade" style="font-size:12px;padding:3px 8px">${sym}</span>
               ${split ? `<span class="badge expired" style="font-size:10px;padding:2px 5px">${split.ratio} split</span>` : ''}
               <div class="inv-sym-meta">
-                <span>${pos.qty.toFixed(2)} sh</span>
+                <span>${pos.qty.toFixed(4)} sh</span>
                 <span class="inv-sep">·</span>
                 <span>avg $${(pos.costPrice||0).toFixed(2)}</span>
               </div>
