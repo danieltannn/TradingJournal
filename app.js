@@ -1341,7 +1341,6 @@ function renderInvesting(container) {
     if (a.type === 'split') splitMap[a.symbol] = a;
   }
 
-  // ── Always-visible import bar ──
   const importHtml = `
     <div class="dep-section" style="margin-bottom:12px">
       <div class="dep-section-header">
@@ -1371,105 +1370,106 @@ function renderInvesting(container) {
     return;
   }
 
-  // ── Compute all summary numbers ──
+  // ── Compute numbers ──
   const deps   = (sgdDeposits || []);
   const sgdIn  = deps.filter(d => d.amount > 0).reduce((s, d) => s + d.amount, 0);
   const sgdOut = deps.filter(d => d.amount < 0).reduce((s, d) => s + d.amount, 0);
+  const sgdNet = sgdIn + sgdOut;
+
   const fxAll  = (forexTrades || []);
-  const usdIn  = fxAll.filter(f => f.usdAmt > 0).reduce((s, f) => s + f.usdAmt, 0);
-  const usdOut = fxAll.filter(f => f.usdAmt < 0).reduce((s, f) => s + f.usdAmt, 0);
+  const fxIn   = fxAll.filter(f => f.usdAmt > 0);
+  const fxOut  = fxAll.filter(f => f.usdAmt < 0);
+  const usdIn  = fxIn.reduce((s, f) => s + f.usdAmt, 0);
+  const usdOut = fxOut.reduce((s, f) => s + f.usdAmt, 0);
+  const sgdUsed = fxIn.reduce((s, f) => s + Math.abs(f.sgdAmt), 0);
+  const histRate = usdIn > 0 ? sgdUsed / usdIn : 0;
+
   const fmtSgd = n => 'S$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const CURRENT_TICKERS = ['DGRO','FBTC','QQQM','SCHD','SMH','SPYL','VGT'];
-  const totalDiv = (dividends || []).reduce((s, d) => s + d.amount, 0);
   let totalCostBasis = 0, totalMktVal = 0, totalUnreal = 0;
   CURRENT_TICKERS.forEach(sym => {
-    const pos = openPositions[sym];
-    if (!pos) return;
+    const pos = openPositions[sym]; if (!pos) return;
     totalCostBasis += pos.costBasis || 0;
     totalMktVal    += pos.mktValue  || 0;
     totalUnreal    += pos.unrealPL  || 0;
   });
-  const returnPct = totalCostBasis > 0 ? (totalUnreal / totalCostBasis * 100).toFixed(1) : '0.0';
 
-  // ── Account details (always visible) ──
+  // SGD portfolio using historical rate (live rate updates after Yahoo Finance fetch)
+  const prevWin    = ibData.prevWinningsSgd || 0;
+  const origSgd    = sgdNet - prevWin;
+  const portSgd    = histRate > 0 ? totalMktVal * histRate : 0;
+  const plSgd      = portSgd - origSgd;
+  const plSgdPct   = origSgd > 0 ? (plSgd / origSgd * 100).toFixed(1) : '0.0';
+
+  // ── Account details ──
   const accountHtml = `
     <div class="inv-account-details">
-      <div class="inv-acct-row">
-        <div class="inv-acct-item">
-          <div class="sgd-lbl">Deposited (SGD)</div>
-          <div class="sgd-val pos">${fmtSgd(sgdIn)}</div>
-        </div>
-        <div class="inv-acct-item">
-          <div class="sgd-lbl">Withdrawn (SGD)</div>
-          <div class="sgd-val neg">${fmtSgd(Math.abs(sgdOut))}</div>
-        </div>
-        <div class="inv-acct-item">
-          <div class="sgd-lbl">Deposited (USD)</div>
-          <div class="sgd-val pos">${fmt(usdIn)}</div>
-        </div>
-        <div class="inv-acct-item">
-          <div class="sgd-lbl">Withdrawn (USD)</div>
-          <div class="sgd-val neg">${fmt(Math.abs(usdOut))}</div>
-        </div>
+      <div class="inv-acct-row inv-acct-3">
+        <div class="inv-acct-item"><div class="sgd-lbl">Deposited (SGD)</div><div class="sgd-val pos">${fmtSgd(sgdIn)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Withdrawn (SGD)</div><div class="sgd-val neg">${fmtSgd(Math.abs(sgdOut))}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Net (SGD)</div><div class="sgd-val">${fmtSgd(sgdNet)}</div></div>
       </div>
       <div class="inv-acct-divider"></div>
-      <div class="inv-acct-row">
+      <div class="inv-acct-row inv-acct-3">
+        <div class="inv-acct-item"><div class="sgd-lbl">Deposited (USD)</div><div class="sgd-val pos">${fmt(usdIn)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Withdrawn (USD)</div><div class="sgd-val neg">${fmt(Math.abs(usdOut))}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Net (USD)</div><div class="sgd-val">${fmt(usdIn + usdOut)}</div></div>
+      </div>
+      <div class="inv-acct-divider"></div>
+      <div class="inv-acct-row inv-acct-3">
         <div class="inv-acct-item">
-          <div class="sgd-lbl">Amount Invested</div>
-          <div class="sgd-val pos">${fmt(totalCostBasis)}</div>
+          <div class="sgd-lbl">Original Amount</div>
+          <div class="sgd-val">${fmtSgd(origSgd)}</div>
+          ${prevWin > 0 ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">less ${fmtSgd(prevWin)} prev winnings</div>` : ''}
         </div>
         <div class="inv-acct-item">
-          <div class="sgd-lbl">Market Value</div>
-          <div id="sum-mkt" class="sgd-val">${fmt(totalMktVal)}</div>
+          <div class="sgd-lbl">Portfolio (SGD)</div>
+          <div id="sum-mkt" class="sgd-val">${portSgd > 0 ? fmtSgd(portSgd) : '—'}</div>
+          <div id="sum-rate" style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${fmt(totalMktVal)} USD · avg S$${histRate.toFixed(4)}</div>
         </div>
         <div class="inv-acct-item">
-          <div class="sgd-lbl">Unrealised P&L</div>
-          <div id="sum-unreal" class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal > 0 ? '+' : ''}${fmt(totalUnreal)}</div>
-        </div>
-        <div class="inv-acct-item">
-          <div class="sgd-lbl">Return</div>
-          <div id="sum-return" class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${returnPct}%</div>
+          <div class="sgd-lbl">P&L (SGD)</div>
+          <div id="sum-unreal" class="sgd-val ${plSgd >= 0 ? 'pos' : 'neg'}">${plSgd > 0 ? '+' : ''}${portSgd > 0 ? fmtSgd(plSgd) : '—'}</div>
+          <div id="sum-return" style="font-size:11px;margin-top:2px" class="${plSgd >= 0 ? 'pos' : 'neg'}">${portSgd > 0 ? (plSgdPct > 0 ? '+' : '') + plSgdPct + '%' : ''}</div>
         </div>
       </div>
     </div>`;
 
   // ── Sub-tab bar ──
-  const INV_TABS = ['Holdings','Calculator','Past Options'];
+  const INV_TABS = ['Holdings', 'Calculator', 'Past Options'];
   const subTabBar = `
     <div class="inv-subtab-bar">
-      ${INV_TABS.map((t, i) => `
-        <button class="inv-subtab ${activeInvTab === i ? 'active' : ''}" onclick="switchInvTab(${i})">${t}</button>
-      `).join('')}
+      ${INV_TABS.map((t, i) =>
+        `<button class="inv-subtab ${activeInvTab === i ? 'active' : ''}" onclick="switchInvTab(${i})">${t}</button>`
+      ).join('')}
     </div>`;
 
-  // ── Build sub-tab content ──
+  // ── Sub-tab content ──
   let subContent = '';
 
   if (activeInvTab === 0) {
-    // ── Holdings tab ──
+    // Holdings
     const tickerRows = CURRENT_TICKERS.map(sym => {
-      const pos = openPositions[sym];
-      if (!pos) return '';
-      const unrealPct = pos.costBasis > 0 ? ((pos.unrealPL / pos.costBasis) * 100).toFixed(1) : null;
-      const split = splitMap[sym];
-      // All trades: buys and sells
-      const allTrades = trades.filter(t => t.symbol === sym)
-        .sort((a, b) => (a.dateRaw || '').localeCompare(b.dateRaw || ''));
-      const totalRealPL = allTrades.filter(t => t.qty < 0).reduce((s, t) => s + t.realPL, 0);
-      const buyCount  = allTrades.filter(t => t.qty > 0).length;
-      const sellCount = allTrades.filter(t => t.qty < 0).length;
+      const pos = openPositions[sym]; if (!pos) return '';
+      const split      = splitMap[sym];
+      const allTrades  = trades.filter(t => t.symbol === sym).sort((a, b) => (a.dateRaw||'').localeCompare(b.dateRaw||''));
+      const realPL     = allTrades.filter(t => t.qty < 0).reduce((s, t) => s + (t.realPL||0), 0);
+      const totalPL    = (pos.unrealPL || 0) + realPL;
+      const totalPct   = pos.costBasis > 0 ? (totalPL / pos.costBasis * 100).toFixed(1) : '0.0';
+      const buyCount   = allTrades.filter(t => t.qty > 0).length;
+      const sellCount  = allTrades.filter(t => t.qty < 0).length;
 
       const tradeRows = allTrades.map(t => {
         const isBuy = t.qty > 0;
         return `<tr>
-          <td>${(t.dateRaw || '').slice(0, 10)}</td>
-          <td><span class="badge ${isBuy ? 'open' : 'closed'}">${isBuy ? 'BUY' : 'SELL'}</span></td>
+          <td>${(t.dateRaw||'').slice(0,10)}</td>
+          <td><span class="badge ${isBuy?'open':'closed'}">${isBuy?'BUY':'SELL'}</span></td>
           <td class="mono">${Math.abs(t.qty).toFixed(4)}</td>
           <td class="mono">$${t.tPrice.toFixed(2)}</td>
-          <td class="${isBuy ? 'neg' : 'pos'}">$${Math.abs(t.proceeds).toFixed(2)}</td>
+          <td class="${isBuy?'neg':'pos'}">$${Math.abs(t.proceeds).toFixed(2)}</td>
           <td class="neg">$${Math.abs(t.comm).toFixed(2)}</td>
-          ${!isBuy ? `<td class="${t.realPL >= 0 ? 'pos' : 'neg'}">${t.realPL > 0 ? '+' : ''}$${t.realPL.toFixed(2)}</td>` : '<td style="color:var(--text-tertiary)">—</td>'}
+          <td class="${t.realPL > 0 ? 'pos' : t.realPL < 0 ? 'neg' : ''}">${!isBuy && t.realPL !== 0 ? (t.realPL>0?'+':'')+'$'+t.realPL.toFixed(2) : '—'}</td>
         </tr>`;
       }).join('');
 
@@ -1482,7 +1482,9 @@ function renderInvesting(container) {
               <div class="inv-sym-meta">
                 <span>${pos.qty.toFixed(2)} sh</span>
                 <span class="inv-sep">·</span>
-                <span>${buyCount} buy${buyCount!==1?'s':''}${sellCount ? ' · ' + sellCount + ' sell' + (sellCount!==1?'s':'') : ''}</span>
+                <span>avg $${(pos.costPrice||0).toFixed(2)}</span>
+                <span class="inv-sep">·</span>
+                <span>${buyCount}B${sellCount?` ${sellCount}S`:''}</span>
               </div>
             </div>
             <div class="inv-sym-right">
@@ -1495,13 +1497,9 @@ function renderInvesting(container) {
                 <span class="inv-stat-val" id="live-mkt-${sym}">${fmt(pos.mktValue)}</span>
               </div>
               <div class="inv-stat">
-                <span class="inv-stat-label">Unreal P&L</span>
-                <span class="inv-stat-val ${pos.unrealPL >= 0 ? 'pos' : 'neg'}" id="live-unreal-${sym}">${pos.unrealPL > 0 ? '+' : ''}${fmt(pos.unrealPL)}${unrealPct ? ` (${unrealPct}%)` : ''}</span>
+                <span class="inv-stat-label">Total P&L</span>
+                <span class="inv-stat-val ${totalPL>=0?'pos':'neg'}" id="live-unreal-${sym}">${totalPL>0?'+':''}${fmt(totalPL)} (${totalPct}%)</span>
               </div>
-              ${totalRealPL !== 0 ? `<div class="inv-stat">
-                <span class="inv-stat-label">Real P&L</span>
-                <span class="inv-stat-val ${totalRealPL >= 0 ? 'pos' : 'neg'}">${totalRealPL > 0 ? '+' : ''}${fmt(totalRealPL)}</span>
-              </div>` : ''}
               <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
             </div>
           </div>
@@ -1509,7 +1507,7 @@ function renderInvesting(container) {
             <div class="tbl-wrap" style="margin:10px 14px 14px">
               ${split ? `<div style="font-size:11px;color:var(--text-tertiary);padding:6px 10px;background:var(--bg-secondary);border-bottom:0.5px solid var(--border)"><i class="ti ti-info-circle"></i> ${split.ratio} split on ${split.date}. Pre-split trades show original qty &amp; price.</div>` : ''}
               <table>
-                <thead><tr><th>Date</th><th>Type</th><th>Qty</th><th>Price</th><th>Cost/Proceeds</th><th>Comm</th><th>Real P&L</th></tr></thead>
+                <thead><tr><th>Date</th><th>Type</th><th>Qty</th><th>Price</th><th>Cost/Proc</th><th>Comm</th><th>Real P&L</th></tr></thead>
                 <tbody>${tradeRows}</tbody>
               </table>
             </div>
@@ -1517,10 +1515,21 @@ function renderInvesting(container) {
         </div>`;
     }).filter(Boolean).join('');
 
+    // Pie chart by market value
+    const pieColors = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#ff7b72','#ffa657','#39d353'];
+    const pieData   = CURRENT_TICKERS.map((sym, i) => ({ sym, val: openPositions[sym]?.mktValue || 0, color: pieColors[i] })).filter(d => d.val > 0);
+    const totalMv   = pieData.reduce((s, d) => s + d.val, 0);
+    const legendHtml = pieData.map(d => `
+      <div class="pie-legend-item">
+        <span class="pie-dot" style="background:${d.color}"></span>
+        <span class="pie-sym">${d.sym}</span>
+        <span class="pie-pct">${(d.val/totalMv*100).toFixed(1)}%</span>
+      </div>`).join('');
+
     subContent = `
       <div class="holdings-pie-card">
-        <canvas id="holdingsPie" aria-label="Holdings allocation chart"></canvas>
-        <div class="pie-legend" id="pieLegend"></div>
+        <canvas id="holdingsPie" aria-label="Holdings allocation"></canvas>
+        <div class="pie-legend" id="pieLegend">${legendHtml}</div>
       </div>
       <div class="inv-holdings">${tickerRows}</div>`;
 
@@ -1531,7 +1540,6 @@ function renderInvesting(container) {
   }
 
   container.innerHTML = importHtml + accountHtml + subTabBar + `<div class="inv-subtab-content">${subContent}</div>`;
-
   attachIbFileInput();
   window._ibOpenPositions = openPositions;
 
@@ -1539,44 +1547,26 @@ function renderInvesting(container) {
     if (activeInvTab === 2) renderOptChart();
 
     if (activeInvTab === 0) {
-      // Pie chart by market value
-      const pie = el('holdingsPie');
+      const pie    = el('holdingsPie');
       const legend = el('pieLegend');
       if (!pie || !window.Chart) return;
-      const PIE_COLORS = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#ff7b72','#ffa657','#39d353'];
-      const pieLabels = [], pieValues = [], pieColors = [];
-      const totalMv = CURRENT_TICKERS.reduce((s, sym) => s + (openPositions[sym]?.mktValue || 0), 0);
-      CURRENT_TICKERS.forEach((sym, i) => {
-        const pos = openPositions[sym];
-        if (!pos?.mktValue) return;
-        pieLabels.push(sym);
-        pieValues.push(+pos.mktValue.toFixed(2));
-        pieColors.push(PIE_COLORS[i % PIE_COLORS.length]);
-      });
+      const pieColors = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#ff7b72','#ffa657','#39d353'];
+      const pieData   = CURRENT_TICKERS.map((sym, i) => ({ sym, val: openPositions[sym]?.mktValue || 0, color: pieColors[i] })).filter(d => d.val > 0);
+      const totalMv   = pieData.reduce((s, d) => s + d.val, 0);
       new Chart(pie, {
         type: 'doughnut',
-        data: { labels: pieLabels, datasets: [{ data: pieValues, backgroundColor: pieColors, borderWidth: 3, borderColor: '#161b22', hoverOffset: 6 }] },
+        data: {
+          labels: pieData.map(d => d.sym),
+          datasets: [{ data: pieData.map(d => +d.val.toFixed(2)), backgroundColor: pieData.map(d => d.color), borderWidth: 3, borderColor: '#161b22', hoverOffset: 6 }]
+        },
         options: {
           responsive: true, maintainAspectRatio: true, cutout: '55%',
           plugins: {
             legend: { display: false },
-            tooltip: { callbacks: { label: ctx => {
-              const pct = (ctx.parsed / totalMv * 100).toFixed(1);
-              return ` ${ctx.label}: ${fmt(ctx.parsed)} (${pct}%)`;
-            }}}
+            tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.parsed)} (${(ctx.parsed/totalMv*100).toFixed(1)}%)` } }
           }
         }
       });
-      if (legend) {
-        legend.innerHTML = pieLabels.map((sym, i) => {
-          const pct = (pieValues[i] / totalMv * 100).toFixed(1);
-          return `<div class="pie-legend-item">
-            <span class="pie-dot" style="background:${pieColors[i]}"></span>
-            <span class="pie-sym">${sym}</span>
-            <span class="pie-pct">${pct}%</span>
-          </div>`;
-        }).join('');
-      }
     }
 
     fetchAndUpdateLivePrices(CURRENT_TICKERS, openPositions);
@@ -1587,6 +1577,7 @@ window.switchInvTab = function(i) {
   activeInvTab = i;
   renderInvesting(el('tabContent'));
 };
+
 
 window.toggleInvSym = function(sym) {
   const card = el(`inv-sym-${sym}`);
