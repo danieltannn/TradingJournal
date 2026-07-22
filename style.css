@@ -734,7 +734,7 @@ tr:hover td { background: var(--bg-secondary); }
 }
 .inv-stat { display: flex; flex-direction: column; align-items: flex-end; }
 .inv-stat-label { font-size: 10.5px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; }
-.inv-stat-val { font-size: 13px; font-weight: 600; }
+.inv-stat-val { font-size: 13px; font-weight: 600; color: var(--text); }
 
 .inv-chevron {
   font-size: 14px;
