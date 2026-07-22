@@ -161,24 +161,45 @@ async function ghPutSgd(sgdRows) {
 
 // ── IB GitHub file ────────────────────────────────────────────────────────
 async function ghGetIb() {
-  const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}?ref=${GH_BRANCH}`;
+  const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}?ref=${GH_BRANCH}&t=${Date.now()}`;
   const res = await fetch(url, { headers: ghHeaders() });
-  if (res.status === 404) return { trades: [], openPositions: {}, dividends: [] };
-  if (!res.ok) return { trades: [], openPositions: {}, dividends: [] };
+  if (res.status === 404) { ibFileSha = null; return { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] }; }
+  if (!res.ok) { ibFileSha = null; return { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] }; }
   const data = await res.json();
   ibFileSha = data.sha;
-  return JSON.parse(atob(data.content.replace(/\n/g, '')));
+  try { return JSON.parse(atob(data.content.replace(/\n/g, ''))); }
+  catch(_) { ibFileSha = null; return { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] }; }
+}
+
+// Delete ib.json entirely (used by Clear so next write is a fresh create — no SHA conflict)
+async function ghDeleteIb() {
+  if (!ibFileSha) {
+    // Fetch SHA first
+    try {
+      const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}?ref=${GH_BRANCH}&t=${Date.now()}`, { headers: ghHeaders() });
+      if (r.status === 404) return; // already gone
+      if (r.ok) { const d = await r.json(); ibFileSha = d.sha; }
+    } catch(_) { return; }
+  }
+  const res = await fetch(
+    `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}`,
+    { method: 'DELETE', headers: ghHeaders(),
+      body: JSON.stringify({ message: 'Clear ib.json', sha: ibFileSha, branch: GH_BRANCH }) }
+  );
+  ibFileSha = null;
 }
 
 async function ghPutIb(ibPayload) {
   const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}`;
 
   for (let attempt = 0; attempt < 4; attempt++) {
-    // Always fetch fresh SHA before each attempt
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
+
+    // Always get the freshest SHA
     try {
       const check = await fetch(`${url}?ref=${GH_BRANCH}&t=${Date.now()}`, { headers: ghHeaders() });
-      if (check.ok) { const d = await check.json(); ibFileSha = d.sha; }
-      else if (check.status === 404) ibFileSha = null; // file doesn't exist yet
+      if (check.ok)               { const d = await check.json(); ibFileSha = d.sha; }
+      else if (check.status === 404) ibFileSha = null; // file was deleted, fresh create
     } catch(_) {}
 
     const body = {
@@ -189,22 +210,16 @@ async function ghPutIb(ibPayload) {
     if (ibFileSha) body.sha = ibFileSha;
 
     const res = await fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
-
     if (res.ok) {
       const data = await res.json();
       ibFileSha = data.content.sha;
-      ibData = ibPayload;
+      ibData    = ibPayload;
       return;
     }
-
-    if ((res.status === 409 || res.status === 422) && attempt < 3) {
-      // SHA conflict — wait and retry with fresh SHA
-      await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
-      continue;
-    }
-
-    throw new Error(`GitHub IB write error ${res.status}`);
+    if (res.status !== 409 && res.status !== 422) throw new Error(`GitHub write failed (${res.status})`);
+    // 409/422 = SHA conflict, loop will retry with fresh SHA
   }
+  throw new Error('GitHub write failed after retries — please try again');
 }
 
 // ── CSV parser ─────────────────────────────────────────────────────────────
@@ -1586,13 +1601,28 @@ window.toggleInvSym = function(sym) {
 };
 
 window.clearIbData = async function() {
-  if (!confirm('Clear all IB investing data? This will also delete ib.json on GitHub.')) return;
-  ibData = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] };
-  if (ghToken) {
-    try { await ghPutIb(ibData); } catch(e) { console.warn('Could not clear ib.json:', e); }
-  }
-  renderInvesting(el('tabContent'));
+  if (!confirm('Clear all IB data? This cannot be undone.')) return;
+  const status = el('ib-status');
+  const show = msg => { if (status) { status.textContent = msg; status.style.display = 'block'; } };
+
+  if (!ghToken) { showTokenModal(async () => { await doClearIb(); }); return; }
+  await doClearIb();
 };
+
+async function doClearIb() {
+  const status = el('ib-status');
+  const show = msg => { if (status) { status.textContent = msg; status.style.display = 'block'; } };
+  show('Clearing…');
+  try {
+    await ghDeleteIb();                      // delete ib.json entirely
+    ibData = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] };           // reset in-memory state
+    show('✓ Cleared — you can now import fresh CSVs');
+    setTimeout(() => { if (status) status.style.display = 'none'; }, 3000);
+    renderInvesting(el('tabContent'));
+  } catch(e) {
+    show(`⚠️ Clear failed: ${e.message}`);
+  }
+}
 
 function attachIbFileInput() {
   const input = el('ibCsvInput');
@@ -1646,15 +1676,19 @@ async function mergeAndCommitIb(csvText) {
                        ...newCorpActs.filter(a => !(ibData.corporateActions || []).some(x => x.symbol === a.symbol && x.date === a.date && x.type === a.type))],
   };
 
-  show(`Saving ${totalNew} new rows to GitHub…`);
+  show(`Saving to GitHub…`);
   const doSave = async () => {
     try {
       await ghPutIb(merged);
-      show(`✓ ${toAddStocks.length} stock · ${toAddOpts.length} option · ${toAddAssigns.length} assignment trades added`);
+      const parts = [];
+      if (toAddStocks.length)  parts.push(`${toAddStocks.length} stock trade${toAddStocks.length>1?'s':''}`);
+      if (toAddOpts.length)    parts.push(`${toAddOpts.length} option trade${toAddOpts.length>1?'s':''}`);
+      if (toAddAssigns.length) parts.push(`${toAddAssigns.length} assignment${toAddAssigns.length>1?'s':''}`);
+      show(`✓ Saved — ${parts.length ? parts.join(' · ') + ' added' : 'positions updated'}`);
       setTimeout(() => { if (sbar) sbar.style.display = 'none'; }, 5000);
       renderTabContent();
     } catch(e) {
-      show(`Error: ${e.message}`);
+      show(`⚠️ ${e.message}`);
     }
   };
 
