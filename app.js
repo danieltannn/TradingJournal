@@ -1249,7 +1249,7 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
   try {
     show('⏳ Loading live prices…');
     const res = await fetch(
-      `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/prices.json?t=${Date.now()}`,
+      `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/data/prices.json?t=${Date.now()}`,
       { cache: 'no-store' }
     );
     if (!res.ok) throw new Error('prices.json not found — run the GitHub Action first');
@@ -1675,7 +1675,7 @@ window.refreshLivePrices = async function() {
       show(`⏳ Waiting for prices… (${secs}s)`);
       try {
         const r = await fetch(
-          `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/prices.json?t=${Date.now()}`,
+          `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/data/prices.json?t=${Date.now()}`,
           { cache: 'no-store' }
         );
         if (r.ok) {
