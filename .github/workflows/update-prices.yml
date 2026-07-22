@@ -2,8 +2,8 @@ name: Update Prices
 
 on:
   schedule:
-    - cron: '0 1,7,13,19 * * *'  # 4x daily (UTC 1,7,13,19 = SGT 9,15,21,3)
-  workflow_dispatch:               # Allow manual trigger from GitHub Actions tab
+    - cron: '0 1,7,13,19 * * *'
+  workflow_dispatch:
 
 jobs:
   update:
@@ -13,52 +13,85 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fetch prices and SGD rate
+      - name: Install dependencies
+        run: pip install yfinance requests
+
+      - name: Fetch prices
         run: |
           python3 << 'PYEOF'
-          import json, urllib.request, datetime
+          import json, datetime
+          import yfinance as yf
+          import requests
 
-          result = { 'timestamp': datetime.datetime.utcnow().isoformat() + 'Z', 'usdsgd': 0, 'prices': {} }
+          result = {
+            'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
+            'usdsgd': 0,
+            'prices': {}
+          }
 
-          # 1. SGD rate from frankfurter.app
+          # ── SGD rate: try multiple sources ──
+          sgd_sources = [
+            ('frankfurter', 'https://api.frankfurter.app/latest?from=USD&to=SGD', lambda d: d['rates']['SGD']),
+            ('er-api',      'https://open.er-api.com/v6/latest/USD',              lambda d: d['rates']['SGD']),
+            ('cdn-api',     'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', lambda d: d['usd']['sgd']),
+          ]
+          for name, url, extract in sgd_sources:
+            try:
+              r = requests.get(url, timeout=10)
+              r.raise_for_status()
+              result['usdsgd'] = round(extract(r.json()), 6)
+              print(f'SGD rate from {name}: {result["usdsgd"]}')
+              break
+            except Exception as e:
+              print(f'SGD {name} failed: {e}')
+
+          # ── Stock prices via yfinance ──
+          TICKERS = {
+            'DGRO': 'DGRO', 'FBTC': 'FBTC', 'QQQM': 'QQQM',
+            'SCHD': 'SCHD', 'SMH': 'SMH',   'VGT': 'VGT',
+            'SPYL': 'SPYL.L',
+          }
           try:
-            with urllib.request.urlopen('https://api.frankfurter.app/latest?from=USD&to=SGD', timeout=10) as r:
-              fx = json.load(r)
-              result['usdsgd'] = fx['rates']['SGD']
-              result['date'] = fx['date']
-              print('SGD rate:', result['usdsgd'])
+            yf_syms = list(TICKERS.values())
+            data = yf.download(yf_syms, period='1d', progress=False, auto_adjust=True)
+            closes = data['Close'].iloc[-1]
+
+            # Get GBP/USD for SPYL conversion
+            gbpusd = 1.0
+            try:
+              fx = yf.download('GBPUSD=X', period='1d', progress=False)
+              gbpusd = float(fx['Close'].iloc[-1])
+              print(f'GBPUSD: {gbpusd}')
+            except Exception as e:
+              print(f'GBPUSD failed: {e}')
+
+            for our_sym, yf_sym in TICKERS.items():
+              try:
+                price = float(closes[yf_sym])
+                if our_sym == 'SPYL':
+                  # SPYL.L is in GBP pence on LSE
+                  price = price / 100 * gbpusd
+                result['prices'][our_sym] = round(price, 4)
+                print(f'{our_sym}: {result["prices"][our_sym]}')
+              except Exception as e:
+                print(f'{our_sym} price failed: {e}')
           except Exception as e:
-            print('SGD rate failed:', e)
+            print(f'yfinance batch failed: {e}')
+            # Fallback: fetch individually
+            for our_sym, yf_sym in TICKERS.items():
+              try:
+                t = yf.Ticker(yf_sym)
+                price = t.fast_info.last_price
+                if our_sym == 'SPYL':
+                  price = price / 100 * gbpusd
+                result['prices'][our_sym] = round(price, 4)
+                print(f'{our_sym} (individual): {result["prices"][our_sym]}')
+              except Exception as e:
+                print(f'{our_sym} individual failed: {e}')
 
-          # 2. Stock prices from Yahoo Finance (server-side, no CORS)
-          symbols = ['DGRO', 'FBTC', 'QQQM', 'SCHD', 'SMH', 'VGT', 'SPYL.L', 'GBPUSD=X']
-          try:
-            url = 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' + ','.join(symbols)
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=10) as r:
-              data = json.load(r)
-
-            gbpusd = 1
-            for q in data['quoteResponse']['result']:
-              sym = q['symbol']
-              price = q.get('regularMarketPrice', 0)
-              currency = q.get('currency', 'USD')
-              if sym == 'GBPUSD=X':
-                gbpusd = price
-              elif sym == 'SPYL.L':
-                if currency == 'GBp':   price = price / 100 * gbpusd
-                elif currency == 'GBP': price = price * gbpusd
-                result['prices']['SPYL'] = round(price, 4)
-              else:
-                result['prices'][sym] = round(price, 4)
-
-            print('Prices:', result['prices'])
-          except Exception as e:
-            print('Yahoo Finance failed:', e)
-
+          print('\nFinal result:', json.dumps(result, indent=2))
           with open('prices.json', 'w') as f:
             json.dump(result, f, indent=2)
-          print('Done:', result)
           PYEOF
 
       - name: Commit prices.json
