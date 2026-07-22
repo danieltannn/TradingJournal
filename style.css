@@ -970,3 +970,63 @@ tr:hover td { background: var(--bg-secondary); }
 @keyframes spin { to { transform: rotate(360deg); } }
 #ibkr-sync-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 #ibkr-sync-btn .ti-loader-2 { display: inline-block; }
+
+/* ── Investing sub-tabs ── */
+.inv-account-details {
+  background: var(--bg);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.inv-acct-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+}
+.inv-acct-item {
+  padding: 10px 12px;
+  border-right: 0.5px solid var(--border);
+}
+.inv-acct-item:last-child { border-right: none; }
+.inv-acct-divider {
+  height: 0.5px;
+  background: var(--border);
+}
+@media (max-width: 480px) {
+  .inv-acct-row { grid-template-columns: repeat(2, 1fr); }
+  .inv-acct-item:nth-child(2) { border-right: none; }
+  .inv-acct-item:nth-child(3),
+  .inv-acct-item:nth-child(4) { border-top: 0.5px solid var(--border); }
+  .inv-acct-item:nth-child(4) { border-right: none; }
+}
+
+.inv-subtab-bar {
+  display: flex;
+  gap: 0;
+  background: var(--bg-secondary);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 3px;
+  margin-bottom: 14px;
+}
+.inv-subtab {
+  flex: 1;
+  padding: 7px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  border-radius: calc(var(--radius-lg) - 3px);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+}
+.inv-subtab:hover { color: var(--text); }
+.inv-subtab.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.inv-subtab-content { }
