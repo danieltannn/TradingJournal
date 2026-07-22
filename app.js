@@ -1318,10 +1318,7 @@ function renderInvesting(container) {
         <i class="ti ti-file-import" aria-hidden="true"></i>
         IB Activity Statement
         <span class="dep-count">${trades.length} trades · ${(sgdDeposits||[]).length} SGD entries</span>
-        <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-          <button class="inv-import-btn" onclick="syncFromIbkr()" id="ibkr-sync-btn">
-            <i class="ti ti-refresh" aria-hidden="true"></i> Sync IBKR
-          </button>
+        <div style="margin-left:auto;display:flex;gap:6px">
           <label class="inv-import-btn">
             <input type="file" accept=".csv" id="ibCsvInput" style="display:none">
             <i class="ti ti-upload" aria-hidden="true"></i> Import CSV
@@ -1330,7 +1327,6 @@ function renderInvesting(container) {
         </div>
       </div>
       <div id="ib-status" style="display:none;font-size:12px;padding:4px 0;color:var(--text-secondary)"></div>
-      ${ibData.lastIbkrSync ? `<div style="font-size:11px;color:var(--text-tertiary);padding:2px 0">Last IBKR sync: ${new Date(ibData.lastIbkrSync).toLocaleString()}</div>` : ''}
     </div>`;
 
   if (!hasData) {
@@ -1771,41 +1767,6 @@ function parseIbCSVLine(line) {
   result.push(cur);
   return result;
 }
-
-// ── IBKR Live Sync via Claude ─────────────────────────────────────────────
-const SYNC_MSG = 'Sync my IBKR live positions to my Trade Tracker. Fetch my current positions from IBKR and push the updated openPositions to ib.json on GitHub (danieltannn/TradingJournal). Use my existing IBKR and GitHub connections.';
-
-window.syncFromIbkr = function() {
-  // Copy sync message to clipboard
-  navigator.clipboard.writeText(SYNC_MSG).catch(() => {});
-
-  // Show modal with instructions
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:1000;display:flex;align-items:flex-end;justify-content:center;padding:20px';
-  overlay.innerHTML = `
-    <div style="background:var(--bg);border:0.5px solid var(--border);border-radius:16px 16px 12px 12px;padding:24px;max-width:420px;width:100%;margin-bottom:8px">
-      <div style="font-weight:700;font-size:15px;margin-bottom:6px">Sync from IBKR</div>
-      <p style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:16px">
-        The sync message has been <strong style="color:var(--green)">copied to your clipboard</strong>.<br><br>
-        1. Open Claude and go to your <strong>Trade Tracker project</strong><br>
-        2. Paste and tap Send<br>
-        3. Come back here and pull down to refresh
-      </p>
-      <div style="background:var(--bg-secondary);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11.5px;color:var(--text-tertiary);margin-bottom:16px;line-height:1.5">
-        ${SYNC_MSG}
-      </div>
-      <div style="display:flex;gap:8px">
-        <button onclick="this.closest('[style*=fixed]').remove()"
-          style="flex:1;padding:11px;border:0.5px solid var(--border);border-radius:8px;background:none;color:var(--text-secondary);cursor:pointer;font-size:13px">Close</button>
-        <button onclick="window.open('https://claude.ai','_blank');this.closest('[style*=fixed]').remove()"
-          style="flex:2;padding:11px;background:var(--green);border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer;font-size:13px">
-          Open Claude →
-        </button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-};
 
 // ── File handlers ──────────────────────────────────────────────────────────
 function attachFileHandlers() {
