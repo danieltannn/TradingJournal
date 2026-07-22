@@ -1418,7 +1418,6 @@ function renderInvesting(container) {
   const sgdUsed = fxIn.reduce((s, f) => s + Math.abs(f.sgdAmt), 0);
   const histRate = usdIn > 0 ? sgdUsed / usdIn : 0;
 
-  const fmtSgd = n => 'S$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const CURRENT_TICKERS = ['DGRO','FBTC','QQQM','SCHD','SMH','SPYL','VGT'];
   let totalCostBasis = 0, totalMktVal = 0, totalUnreal = 0;
@@ -1600,7 +1599,7 @@ function renderInvesting(container) {
     if (activeInvTab === 0) {
       const pie    = el('holdingsPie');
       const legend = el('pieLegend');
-      if (!pie || !window.Chart) return;
+      if (pie && window.Chart) {
       const pieColors = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#ff7b72','#ffa657','#39d353'];
       const pieData   = CURRENT_TICKERS.map((sym, i) => ({ sym, val: openPositions[sym]?.mktValue || 0, color: pieColors[i] })).filter(d => d.val > 0);
       const totalMv   = pieData.reduce((s, d) => s + d.val, 0);
@@ -1618,6 +1617,7 @@ function renderInvesting(container) {
           }
         }
       });
+      }
     }
 
     fetchAndUpdateLivePrices(CURRENT_TICKERS, openPositions);
