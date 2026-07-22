@@ -1306,10 +1306,20 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
     const holdPl  = el('hold-pl');
     if (holdMkt) holdMkt.textContent = fmt(totalLiveMkt);
     if (holdPl) {
-      const realPLAll = (ibData.trades||[]).filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
+      const realPLAll   = (ibData.trades||[]).filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
       const totalPLLive = totalLiveUnreal + realPLAll;
-      const costAll = Object.values(openPositions).reduce((s,p) => s+(p.costBasis||0), 0);
-      const pctAll  = costAll > 0 ? (totalPLLive/costAll*100).toFixed(1) : '0.0';
+      // Use same % base as top: SGD P&L / original SGD amount
+      const fxL     = (ibData.forexTrades||[]).filter(f=>f.usdAmt>0);
+      const fxR     = fxL.length>0 ? fxL.reduce((s,f)=>s+Math.abs(f.sgdAmt),0)/fxL.reduce((s,f)=>s+f.usdAmt,0) : 0;
+      const liveR   = usdsgd || fxR;
+      const pSgd    = liveR > 0 ? totalLiveMkt * liveR : 0;
+      const dSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
+      const oSgd    = dSgd - (ibData.prevWinningsSgd||0);
+      const plSgdL  = pSgd - oSgd;
+      const pctAll  = oSgd > 0 && pSgd > 0 ? (plSgdL/oSgd*100).toFixed(1)
+                    : (Object.values(openPositions).reduce((s,p)=>s+(p.costBasis||0),0) > 0
+                       ? (totalPLLive/Object.values(openPositions).reduce((s,p)=>s+(p.costBasis||0),0)*100).toFixed(1)
+                       : '0.0');
       holdPl.textContent = `${totalPLLive>0?'+':''}${fmt(totalPLLive)} (${pctAll}%)`;
       holdPl.className   = `sgd-val ${totalPLLive>=0?'pos':'neg'}`;
     }
@@ -1539,7 +1549,7 @@ function renderInvesting(container) {
 
     const totalRealPLAll = trades.filter(t => t.qty < 0).reduce((s, t) => s + (t.realPL||0), 0);
     const totalPLAll     = totalUnreal + totalRealPLAll;
-    const totalPLPct     = totalCostBasis > 0 ? (totalPLAll / totalCostBasis * 100).toFixed(1) : '0.0';
+    const totalPLPct     = origSgd > 0 && portSgd > 0 ? (plSgd / origSgd * 100).toFixed(1) : (totalCostBasis > 0 ? (totalPLAll / totalCostBasis * 100).toFixed(1) : '0.0');
     const totalDiv       = (dividends || []).reduce((s, d) => s + d.amount, 0);
 
     subContent = `
