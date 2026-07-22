@@ -965,3 +965,8 @@ tr:hover td { background: var(--bg-secondary); }
 @media (max-width: 600px) {
   .inv-sym-card .trade-body { flex-direction: column; }
 }
+
+/* ── IBKR sync button spinner ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+#ibkr-sync-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+#ibkr-sync-btn .ti-loader-2 { display: inline-block; }
