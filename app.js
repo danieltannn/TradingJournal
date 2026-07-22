@@ -1277,15 +1277,19 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       const unrEl = el(`live-unreal-${sym}`);
       if (mktEl) mktEl.textContent = fmt(mktVal);
       if (unrEl) {
-        // Market Value = live price × shares; P&L = mktVal - costBasis
-        const symTrades  = (ibData.trades||[]).filter(t => t.symbol === sym);
-        const realPL     = symTrades.filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
-        const liveUnreal = mktVal - pos.costBasis;        // recalculate from live price
-        const totalPL    = liveUnreal + realPL;
-        const totalPLPct = pos.costBasis > 0 ? (totalPL/pos.costBasis*100).toFixed(1) : '0.0';
-        const cls        = totalPL >= 0 ? 'pos' : 'neg';
-        unrEl.innerHTML  = `${totalPL > 0 ? '+' : ''}${fmt(totalPL)} <span id="live-unreal-pct-${sym}" style="font-size:10px;font-weight:500">(${totalPLPct}%)</span>`;
-        unrEl.className  = `inv-stat-val ${cls}`;
+        const liveUnreal = mktVal - pos.costBasis;
+        const unrPct     = pos.costBasis > 0 ? (liveUnreal/pos.costBasis*100).toFixed(1) : '0.0';
+        unrEl.innerHTML  = `${liveUnreal>0?'+':''}${fmt(liveUnreal)} <span id="live-unreal-pct-${sym}" style="font-size:10px;font-weight:500">(${unrPct}%)</span>`;
+        unrEl.className  = `inv-stat-val ${liveUnreal>=0?'pos':'neg'}`;
+        totalLiveUnreal  += liveUnreal;  // accumulate correctly
+      }
+      // Update realised P&L element if it exists
+      const realEl = el(`live-real-${sym}`);
+      if (realEl) {
+        const symTrades = (ibData.trades||[]).filter(t => t.symbol === sym);
+        const realPL    = symTrades.filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
+        realEl.textContent = `${realPL>0?'+':''}${fmt(realPL)}`;
+        realEl.className   = `inv-stat-val ${realPL>=0?'pos':'neg'}`;
       }
 
       // Live price badge
@@ -1508,16 +1512,20 @@ function renderInvesting(container) {
             <div class="inv-sym-right">
               <div class="inv-stat">
                 <span class="inv-stat-label">Invested</span>
-                <span class="inv-stat-val pos">${fmt(pos.costBasis)}</span>
+                <span class="inv-stat-val" style="color:var(--text)">${fmt(pos.costBasis)}</span>
               </div>
               <div class="inv-stat">
                 <span class="inv-stat-label">Mkt Val</span>
                 <span class="inv-stat-val" id="live-mkt-${sym}">${fmt(pos.mktValue)}</span>
               </div>
               <div class="inv-stat">
-                <span class="inv-stat-label">Total P&L</span>
-                <span class="inv-stat-val ${totalPL>=0?'pos':'neg'}" id="live-unreal-${sym}">${totalPL>0?'+':''}${fmt(totalPL)} <span id="live-unreal-pct-${sym}" style="font-size:10px;font-weight:500">(${totalPct}%)</span></span>
+                <span class="inv-stat-label">Unreal P&L</span>
+                <span class="inv-stat-val ${(pos.unrealPL||0)>=0?'pos':'neg'}" id="live-unreal-${sym}">${(pos.unrealPL||0)>0?'+':''}${fmt(pos.unrealPL||0)} <span id="live-unreal-pct-${sym}" style="font-size:10px;font-weight:500">(${unrealPct||'0.0'}%)</span></span>
               </div>
+              ${realPL !== 0 ? `<div class="inv-stat">
+                <span class="inv-stat-label">Real P&L</span>
+                <span class="inv-stat-val ${realPL>=0?'pos':'neg'}" id="live-real-${sym}">${realPL>0?'+':''}${fmt(realPL)}</span>
+              </div>` : ''}
               <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
             </div>
           </div>
