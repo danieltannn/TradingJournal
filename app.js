@@ -1276,7 +1276,16 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       const mktEl = el(`live-mkt-${sym}`);
       const unrEl = el(`live-unreal-${sym}`);
       if (mktEl) mktEl.textContent = fmt(mktVal);
-      if (unrEl) { unrEl.textContent = `${unrealPL>0?'+':''}${fmt(unrealPL)} (${pct}%)`; unrEl.className = `inv-stat-val ${unrealPL>=0?'pos':'neg'}`; }
+      if (unrEl) {
+        const symTrades  = (ibData.trades||[]).filter(t => t.symbol === sym);
+        const realPL     = symTrades.filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
+        const totalPL    = unrealPL + realPL;
+        const totalPLPct = pos.costBasis > 0 ? (totalPL/pos.costBasis*100).toFixed(1) : '0.0';
+        unrEl.textContent = `${totalPL > 0 ? '+' : ''}${fmt(totalPL)}`;
+        unrEl.className   = `inv-stat-val ${totalPL >= 0 ? 'pos' : 'neg'}`;
+        const pctEl = el(`live-unreal-pct-${sym}`);
+        if (pctEl) { pctEl.textContent = `${totalPLPct}%`; pctEl.className = totalPL >= 0 ? 'pos' : 'neg'; }
+      }
 
       // Live price badge
       const card = el(`inv-sym-${sym}`);
@@ -1502,7 +1511,8 @@ function renderInvesting(container) {
               </div>
               <div class="inv-stat">
                 <span class="inv-stat-label">Total P&L</span>
-                <span class="inv-stat-val ${totalPL>=0?'pos':'neg'}" id="live-unreal-${sym}">${totalPL>0?'+':''}${fmt(totalPL)} (${totalPct}%)</span>
+                <span class="inv-stat-val ${totalPL>=0?'pos':'neg'}" id="live-unreal-${sym}">${totalPL>0?'+':''}${fmt(totalPL)}</span>
+                <span style="font-size:10.5px;margin-top:1px" class="${totalPL>=0?'pos':'neg'}" id="live-unreal-pct-${sym}">${totalPct}%</span>
               </div>
               <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
             </div>
