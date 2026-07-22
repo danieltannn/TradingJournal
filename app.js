@@ -1062,13 +1062,6 @@ window.runCalc = function(val) {
   }
 };
 
-// ── Previous investment winnings (hardcoded, deducted from SGD deposits) ──
-const PREV_WINNINGS_SGD = [
-  { amount: 811.84,   label: 'Endowus' },
-  { amount: 20075.66, label: 'Syfe Trade' },
-];
-const PREV_WINNINGS_TOTAL = PREV_WINNINGS_SGD.reduce((s, w) => s + w.amount, 0); // 20887.50
-
 // ── Options section (embedded inside Investing) ────────────────────────────
 function buildOptionsSection() {
   const optTrades   = ibData.optionTrades     || [];
@@ -1321,7 +1314,7 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       const liveR   = usdsgd || fxR;
       const pSgd    = liveR > 0 ? totalLiveMkt * liveR : 0;
       const dSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
-      const oSgd    = dSgd - (PREV_WINNINGS_TOTAL);
+      const oSgd    = dSgd - (ibData.prevWinningsSgd||0);
       const plSgdL  = pSgd - oSgd;
       const costAll = Object.values(openPositions).reduce((s,p)=>s+(p.costBasis||0),0);
       const pctAll  = costAll > 0 ? (totalPLLive/costAll*100).toFixed(1) : '0.0';
@@ -1340,7 +1333,7 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
     const liveRate = usdsgd || histRate;
     if (liveRate > 0) {
       const liveSgd   = totalLiveMkt * liveRate;
-      const prevWin   = PREV_WINNINGS_TOTAL;
+      const prevWin   = ibData.prevWinningsSgd || 0;
       const netSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
       const origSgd   = netSgd - prevWin;
       const plSgd     = liveSgd - origSgd;
@@ -1354,6 +1347,19 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
   } catch(e) {
     // Silently fall back to CSV prices — no action needed
     console.warn('Live price fetch failed, using CSV prices:', e.message);
+  }
+}
+
+// ── Live USD/SGD rate from frankfurter.app ────────────────────────────────
+async function fetchLiveUsdSgdRate() {
+  try {
+    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=SGD', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    return data?.rates?.SGD || 0;
+  } catch(e) {
+    console.warn('frankfurter SGD rate failed:', e.message);
+    return 0;
   }
 }
 
@@ -1424,7 +1430,7 @@ function renderInvesting(container) {
   });
 
   // SGD portfolio using historical rate (live rate updates after Yahoo Finance fetch)
-  const prevWin    = PREV_WINNINGS_TOTAL;
+  const prevWin    = ibData.prevWinningsSgd || 0;
   const origSgd    = sgdNet - prevWin;
   const portSgd    = histRate > 0 ? totalMktVal * histRate : 0;
   const plSgd      = portSgd - origSgd;
@@ -1446,14 +1452,12 @@ function renderInvesting(container) {
       </div>
       <div class="inv-acct-divider"></div>
       <div class="inv-acct-row inv-acct-3">
-        <div class="inv-acct-item" onclick="toggleOrigBreakdown(event)" style="cursor:pointer;position:relative">
-          <div class="sgd-lbl">Original Amount <i class="ti ti-info-circle" style="font-size:10px;opacity:.6"></i></div>
+        <div class="inv-acct-item" onclick="toggleOrigBreakdown()" style="cursor:pointer;user-select:none">
+          <div class="sgd-lbl">Org Amt <i class="ti ti-info-circle" style="font-size:10px;opacity:.6"></i></div>
           <div class="sgd-val">${fmtSgd(origSgd)}</div>
-          <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">Net SGD less prev winnings</div>
-          <div id="orig-breakdown" style="display:none;position:absolute;left:0;top:100%;z-index:50;background:var(--bg);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;min-width:200px;box-shadow:0 4px 16px rgba(0,0,0,.4);margin-top:4px">
-            <div style="font-weight:600;margin-bottom:6px;color:var(--text)">Previous winnings deducted</div>
-            ${PREV_WINNINGS_SGD.map(w => `<div style="display:flex;justify-content:space-between;gap:16px;padding:3px 0;color:var(--text-secondary)"><span>${w.label}</span><span class="neg">- ${fmtSgd(w.amount)}</span></div>`).join('')}
-            <div style="border-top:0.5px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:600;color:var(--text)"><span>Total deducted</span><span class="neg">- ${fmtSgd(PREV_WINNINGS_TOTAL)}</span></div>
+          <div id="orig-breakdown" style="display:none;margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border);font-size:11.5px">
+            ${PREV_WINNINGS_SGD.map(w => `<div style="display:flex;justify-content:space-between;color:var(--text-secondary);padding:2px 0"><span>${w.label}</span><span class="neg">-${fmtSgd(w.amount)}</span></div>`).join('')}
+            <div style="display:flex;justify-content:space-between;font-weight:600;color:var(--text);padding-top:4px;margin-top:4px;border-top:0.5px solid var(--border)"><span>Total</span><span class="neg">-${fmtSgd(PREV_WINNINGS_TOTAL)}</span></div>
           </div>
         </div>
         <div class="inv-acct-item">
@@ -1617,6 +1621,25 @@ function renderInvesting(container) {
     }
 
     fetchAndUpdateLivePrices(CURRENT_TICKERS, openPositions);
+
+    // Fetch live USD/SGD rate independently (frankfurter.app)
+    fetchLiveUsdSgdRate().then(rate => {
+      if (!rate) return;
+      const mktVal  = Object.values(openPositions).reduce((s,p)=>s+(p.mktValue||0),0);
+      const liveSgd = mktVal * rate;
+      const origSgd2 = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0) - PREV_WINNINGS_TOTAL;
+      const plSgd2  = liveSgd - origSgd2;
+      const plPct2  = origSgd2 > 0 ? (plSgd2/origSgd2*100).toFixed(1) : '0.0';
+      const fS      = n => 'S$' + Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+      const mktEl   = el('sum-mkt');
+      const rateEl  = el('sum-rate');
+      const unrEl   = el('sum-unreal');
+      const retEl   = el('sum-return');
+      if (mktEl)  mktEl.textContent  = fS(liveSgd);
+      if (rateEl) rateEl.textContent = `${fmt(mktVal)} USD · live 1 USD = S$${rate.toFixed(4)}`;
+      if (unrEl)  { unrEl.textContent = `${plSgd2>0?'+':''}${fS(plSgd2)}`; unrEl.className = `sgd-val ${plSgd2>=0?'pos':'neg'}`; }
+      if (retEl)  { retEl.textContent = `${plPct2>0?'+':''}${plPct2}%`;    retEl.className = plSgd2>=0?'pos':'neg'; }
+    });
   });
 }
 
@@ -1626,18 +1649,9 @@ window.switchInvTab = function(i) {
 };
 
 
-window.toggleOrigBreakdown = function(e) {
-  e.stopPropagation();
+window.toggleOrigBreakdown = function() {
   const box = document.getElementById('orig-breakdown');
-  if (!box) return;
-  box.style.display = box.style.display === 'none' ? 'block' : 'none';
-  // Close when clicking elsewhere
-  if (box.style.display === 'block') {
-    setTimeout(() => document.addEventListener('click', function h() {
-      box.style.display = 'none';
-      document.removeEventListener('click', h);
-    }), 0);
-  }
+  if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
 };
 
 window.toggleInvSym = function(sym) {
