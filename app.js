@@ -1570,13 +1570,33 @@ window.toggleInvSym = function(sym) {
 };
 
 window.clearIbData = async function() {
-  if (!confirm('Clear all IB investing data? This will also delete ib.json on GitHub.')) return;
-  ibData = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] };
-  if (ghToken) {
-    try { await ghPutIb(ibData); } catch(e) { console.warn('Could not clear ib.json:', e); }
+  if (!confirm('Clear all IB investing data? This cannot be undone.')) return;
+
+  const empty = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] };
+
+  // Must have a GitHub token to persist the clear
+  if (!ghToken) {
+    showTokenModal(async () => {
+      await doClear(empty);
+    });
+    return;
   }
-  renderInvesting(el('tabContent'));
+  await doClear(empty);
 };
+
+async function doClear(empty) {
+  const status = el('ib-status');
+  const show = msg => { if (status) { status.textContent = msg; status.style.display = 'block'; } };
+  show('Clearing data…');
+  try {
+    await ghPutIb(empty);
+    show('✓ Data cleared');
+    setTimeout(() => { if (status) status.style.display = 'none'; }, 2000);
+    renderInvesting(el('tabContent'));
+  } catch(e) {
+    show(`⚠️ Clear failed: ${e.message} — try again after refreshing`);
+  }
+}
 
 function attachIbFileInput() {
   const input = el('ibCsvInput');
