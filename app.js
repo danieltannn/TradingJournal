@@ -1369,7 +1369,10 @@ function renderInvesting(container) {
         <i class="ti ti-file-import" aria-hidden="true"></i>
         IB Activity Statement
         <span class="dep-count">${trades.length} trades · ${(sgdDeposits||[]).length} SGD entries</span>
-        <div style="margin-left:auto;display:flex;gap:6px">
+        <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          <button class="inv-import-btn" id="refresh-prices-btn" onclick="refreshLivePrices()" title="Fetch latest prices">
+            <i class="ti ti-refresh" aria-hidden="true"></i> Refresh
+          </button>
           <label class="inv-import-btn">
             <input type="file" accept=".csv" id="ibCsvInput" style="display:none">
             <i class="ti ti-upload" aria-hidden="true"></i> Import CSV
@@ -1643,6 +1646,64 @@ window.switchInvTab = function(i) {
 window.toggleOrigBreakdown = function() {
   const box = document.getElementById('orig-breakdown');
   if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+};
+
+window.refreshLivePrices = async function() {
+  const btn    = document.getElementById('refresh-prices-btn');
+  const status = document.getElementById('ib-status');
+  const show   = msg => { if (status) { status.textContent = msg; status.style.display = 'block'; } };
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Running…'; }
+  show('⏳ Triggering price update…');
+
+  try {
+    // Trigger GitHub Actions workflow
+    const res = await fetch(
+      `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/update-prices.yml/dispatches`,
+      { method: 'POST', headers: { ...ghHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ ref: GH_BRANCH }) }
+    );
+    if (!res.ok) throw new Error(`GitHub API error ${res.status}`);
+
+    // Poll prices.json every 5 seconds for up to 90 seconds
+    show('⏳ Workflow running — fetching prices…');
+    const startTs = Date.now();
+    let secs = 0;
+    const interval = setInterval(async () => {
+      secs += 5;
+      show(`⏳ Waiting for prices… (${secs}s)`);
+      try {
+        const r = await fetch(
+          `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/prices.json?t=${Date.now()}`,
+          { cache: 'no-store' }
+        );
+        if (r.ok) {
+          const data = await r.json();
+          const ts   = data?.timestamp ? new Date(data.timestamp).getTime() : 0;
+          if (ts > startTs - 5000) {
+            // Fresh data received
+            clearInterval(interval);
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
+            show('✓ Live prices updated!');
+            setTimeout(() => { if (status) status.style.display = 'none'; }, 3000);
+            // Re-fetch and update UI
+            const openPositions = ibData.openPositions || {};
+            await fetchAndUpdateLivePrices(Object.keys(openPositions), openPositions);
+          }
+        }
+      } catch(_) {}
+      if (secs >= 90) {
+        clearInterval(interval);
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
+        show('⚠️ Timed out — try again in a moment');
+        setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
+      }
+    }, 5000);
+
+  } catch(e) {
+    show(`⚠️ ${e.message}`);
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
+    setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
+  }
 };
 
 window.toggleInvSym = function(sym) {
