@@ -171,7 +171,13 @@ async function ghGetIb() {
 }
 
 async function ghPutIb(ibPayload) {
-  const url  = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}`;
+  const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}`;
+  // Always fetch the latest SHA to avoid 422 stale-SHA errors
+  try {
+    const check = await fetch(`${url}?ref=${GH_BRANCH}`, { headers: ghHeaders() });
+    if (check.ok) { const d = await check.json(); ibFileSha = d.sha; }
+  } catch(_) {}
+
   const body = {
     message: `Update ib.json — ${new Date().toISOString().slice(0, 10)}`,
     content: btoa(unescape(encodeURIComponent(JSON.stringify(ibPayload, null, 2)))),
