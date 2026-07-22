@@ -1240,33 +1240,56 @@ function renderOptChart() {
 // so we fetch it separately and use the IB cost basis for P&L estimation.
 const YF_MAP = { DGRO:'DGRO', FBTC:'FBTC', QQQM:'QQQM', SCHD:'SCHD', SMH:'SMH', VGT:'VGT', SPYL:'SPYL.L' };
 
+// Fetch one ticker price from Yahoo Finance v8 chart endpoint
+async function fetchYFPrice(yfSym) {
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${yfSym}?interval=1d&range=1d`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`${yfSym} HTTP ${res.status}`);
+  const d = await res.json();
+  const meta = d?.chart?.result?.[0]?.meta;
+  if (!meta) throw new Error(`No data for ${yfSym}`);
+  return { price: meta.regularMarketPrice, currency: meta.currency };
+}
+
 async function fetchAndUpdateLivePrices(tickers, openPositions) {
+  // Show loading indicator
+  const statusEl = el('ib-status');
+  if (statusEl) { statusEl.textContent = '⏳ Fetching live prices…'; statusEl.style.display = 'block'; }
+
+  // Get GBP/USD and USD/SGD from frankfurter first (reliable)
+  let gbpusd = 1, usdsgd = 0;
   try {
-    const syms = tickers.filter(s => YF_MAP[s]).map(s => YF_MAP[s]);
-    if (!syms.length) return;
-
-    // Include GBPUSD for SPYL.L conversion + USDSGD for live SGD portfolio value
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms.join(',')},GBPUSD%3DX,USDSGD%3DX`;
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const quotes = data?.quoteResponse?.result || [];
-    if (!quotes.length) throw new Error('No quotes returned');
-
-    // Get GBP/USD rate for SPYL conversion if needed
-    const gbpusd = quotes.find(q => q.symbol === 'GBPUSD=X')?.regularMarketPrice || 1;
-    const usdsgd = quotes.find(q => q.symbol === 'USDSGD=X')?.regularMarketPrice || 0;
-
-    // Build price map — convert GBP-quoted prices to USD
-    const livePrices = {};
-    for (const q of quotes) {
-      if (q.symbol === 'GBPUSD=X' || q.symbol === 'USDSGD=X') continue;
-      const price = q.regularMarketPrice;
-      const inUsd = (q.currency === 'GBp') ? price / 100 * gbpusd   // pence → USD
-                  : (q.currency === 'GBP') ? price * gbpusd          // pounds → USD
-                  : price;                                            // already USD
-      livePrices[q.symbol] = inUsd;
+    const fx = await fetch('https://api.frankfurter.app/latest?from=USD&to=GBP,SGD', { cache: 'no-store' });
+    if (fx.ok) {
+      const fxd = await fx.json();
+      gbpusd = fxd.rates?.GBP ? 1 / fxd.rates.GBP : 1;
+      usdsgd = fxd.rates?.SGD || 0;
     }
+  } catch(_) {}
+
+  // Fetch each ticker individually from Yahoo Finance v8
+  const livePrices = {};
+  const errors = [];
+  await Promise.allSettled(tickers.map(async sym => {
+    const yfSym = YF_MAP[sym];
+    if (!yfSym) return;
+    try {
+      const { price, currency } = await fetchYFPrice(yfSym);
+      const inUsd = currency === 'GBp' ? price / 100 * gbpusd
+                  : currency === 'GBP' ? price * gbpusd
+                  : price;
+      livePrices[sym] = inUsd;
+    } catch(e) {
+      errors.push(sym);
+    }
+  }));
+
+  const successCount = Object.keys(livePrices).length;
+  if (successCount === 0) {
+    if (statusEl) { statusEl.textContent = '⚠️ Live prices unavailable — showing last import data'; setTimeout(() => { statusEl.style.display = 'none'; }, 5000); }
+    return;
+  }
+  if (statusEl) { statusEl.textContent = `✓ Live prices loaded (${successCount}/${tickers.length})${errors.length ? ` · ${errors.join(',')} unavailable` : ''}`; setTimeout(() => { statusEl.style.display = 'none'; }, 4000); }
 
     // Update each ticker card in the DOM
     let totalLiveMkt = 0, totalLiveUnreal = 0;
@@ -1321,7 +1344,7 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       const liveR   = usdsgd || fxR;
       const pSgd    = liveR > 0 ? totalLiveMkt * liveR : 0;
       const dSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
-      const oSgd    = dSgd - (ibData.prevWinningsSgd||0);
+      const oSgd    = dSgd - PREV_WINNINGS_TOTAL;
       const plSgdL  = pSgd - oSgd;
       const costAll = Object.values(openPositions).reduce((s,p)=>s+(p.costBasis||0),0);
       const pctAll  = costAll > 0 ? (totalPLLive/costAll*100).toFixed(1) : '0.0';
@@ -1340,7 +1363,7 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
     const liveRate = usdsgd || histRate;
     if (liveRate > 0) {
       const liveSgd   = totalLiveMkt * liveRate;
-      const prevWin   = ibData.prevWinningsSgd || 0;
+      const prevWin   = PREV_WINNINGS_TOTAL;
       const netSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
       const origSgd   = netSgd - prevWin;
       const plSgd     = liveSgd - origSgd;
@@ -1351,24 +1374,9 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       if (unrEl) { unrEl.textContent = `${plSgd>0?'+':''}${fmtS(plSgd)}`; unrEl.className = `sgd-val ${plSgd>=0?'pos':'neg'}`; }
       if (retEl) { retEl.textContent = `${plPct>0?'+':''}${plPct}%`; retEl.className = plSgd>=0?'pos':'neg'; }
     }
-  } catch(e) {
-    // Silently fall back to CSV prices — no action needed
-    console.warn('Live price fetch failed, using CSV prices:', e.message);
-  }
 }
 
-// ── Live USD/SGD rate from frankfurter.app ────────────────────────────────
-async function fetchLiveUsdSgdRate() {
-  try {
-    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=SGD', { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    return data?.rates?.SGD || 0;
-  } catch(e) {
-    console.warn('frankfurter SGD rate failed:', e.message);
-    return 0;
-  }
-}
+// frankfurter.app now handled inside fetchAndUpdateLivePrices
 
 // ── Investing tab ──────────────────────────────────────────────────────────
 let activeInvTab = 0; // 0=Holdings, 1=Calculator, 2=Past Options
