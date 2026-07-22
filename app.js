@@ -1276,20 +1276,20 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       const mktEl = el(`live-mkt-${sym}`);
       const unrEl = el(`live-unreal-${sym}`);
       if (mktEl) mktEl.textContent = fmt(mktVal);
+      // Update unrealised P&L (live = mktVal - costBasis)
+      const liveUnreal = mktVal - pos.costBasis;
+      const unrPct     = pos.costBasis > 0 ? (liveUnreal/pos.costBasis*100).toFixed(1) : '0.0';
       if (unrEl) {
-        const liveUnreal = mktVal - pos.costBasis;
-        const unrPct     = pos.costBasis > 0 ? (liveUnreal/pos.costBasis*100).toFixed(1) : '0.0';
-        unrEl.innerHTML  = `${liveUnreal>0?'+':''}${fmt(liveUnreal)} <span id="live-unreal-pct-${sym}" style="font-size:10px;font-weight:500">(${unrPct}%)</span>`;
+        unrEl.innerHTML  = `${liveUnreal>0?'+':''}${fmt(liveUnreal)}<span id="live-unreal-pct-${sym}" style="font-size:10px;font-weight:500;margin-left:3px">(${unrPct}%)</span>`;
         unrEl.className  = `inv-stat-val ${liveUnreal>=0?'pos':'neg'}`;
-        totalLiveUnreal  += liveUnreal;  // accumulate correctly
       }
       // Update realised P&L element if it exists
       const realEl = el(`live-real-${sym}`);
       if (realEl) {
-        const symTrades = (ibData.trades||[]).filter(t => t.symbol === sym);
-        const realPL    = symTrades.filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
-        realEl.textContent = `${realPL>0?'+':''}${fmt(realPL)}`;
-        realEl.className   = `inv-stat-val ${realPL>=0?'pos':'neg'}`;
+        const symTrades2 = (ibData.trades||[]).filter(t => t.symbol === sym);
+        const realPL2    = symTrades2.filter(t => t.qty < 0).reduce((s,t) => s+(t.realPL||0), 0);
+        realEl.textContent = `${realPL2>0?'+':''}${fmt(realPL2)}`;
+        realEl.className   = `inv-stat-val ${realPL2>=0?'pos':'neg'}`;
       }
 
       // Live price badge
@@ -1481,6 +1481,7 @@ function renderInvesting(container) {
       const realPL     = allTrades.filter(t => t.qty < 0).reduce((s, t) => s + (t.realPL||0), 0);
       const totalPL    = (pos.unrealPL || 0) + realPL;
       const totalPct   = pos.costBasis > 0 ? (totalPL / pos.costBasis * 100).toFixed(1) : '0.0';
+      const unrealPct  = pos.costBasis > 0 ? ((pos.unrealPL||0) / pos.costBasis * 100).toFixed(1) : '0.0';
       const buyCount   = allTrades.filter(t => t.qty > 0).length;
       const sellCount  = allTrades.filter(t => t.qty < 0).length;
 
