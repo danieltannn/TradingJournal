@@ -1365,17 +1365,19 @@ function renderInvesting(container) {
 
   const importHtml = `
     <div class="dep-section" style="margin-bottom:12px">
-      <div class="dep-section-header">
-        <i class="ti ti-file-import" aria-hidden="true"></i>
-        IB Activity Statement
-        <span class="dep-count">${trades.length} trades · ${(sgdDeposits||[]).length} SGD entries</span>
-        <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-          <button class="inv-import-btn" id="refresh-prices-btn" onclick="refreshLivePrices()" title="Fetch latest prices">
+      <div class="dep-section-header" style="flex-wrap:wrap;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px;min-width:0">
+          <i class="ti ti-file-import" aria-hidden="true"></i>
+          <span style="font-weight:600">IB Statement</span>
+          <span class="dep-count">${trades.length} trades · ${(sgdDeposits||[]).length} SGD</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
+          <button class="inv-import-btn" id="refresh-prices-btn" onclick="refreshLivePrices()">
             <i class="ti ti-refresh" aria-hidden="true"></i> Refresh
           </button>
           <label class="inv-import-btn">
             <input type="file" accept=".csv" id="ibCsvInput" style="display:none">
-            <i class="ti ti-upload" aria-hidden="true"></i> Import CSV
+            <i class="ti ti-upload" aria-hidden="true"></i> CSV
           </label>
           ${hasData ? `<button class="inv-clear-btn" onclick="clearIbData()">Clear</button>` : ''}
         </div>
