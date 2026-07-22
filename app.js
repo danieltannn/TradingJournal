@@ -972,6 +972,13 @@ function buildAllTable(q, typeFilter) {
     [{label:'Date',w:'82px'},{label:'Type',w:'90px'},{label:'Sub type',w:'90px'},{label:'Symbol'},{label:'Description',w:'170px'},{label:'Comm',w:'55px'},{label:'Fees',w:'45px'},{label:'Total',w:'80px'}]);
 }
 
+// ── Previous investment winnings deducted from original SGD amount ──────────
+const PREV_WINNINGS_SGD = [
+  { amount: 811.84,   label: 'Endowus' },
+  { amount: 20075.66, label: 'Syfe Trade' },
+];
+const PREV_WINNINGS_TOTAL = PREV_WINNINGS_SGD.reduce((s, w) => s + w.amount, 0); // 20887.50
+
 // ── Investment calculator ──────────────────────────────────────────────────
 const ALLOC = [
   { sym: 'DGRO', pct: 5,  avgComm: 0.31 },
