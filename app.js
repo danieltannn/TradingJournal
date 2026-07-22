@@ -1312,7 +1312,12 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
     if (holdMkt)  holdMkt.textContent  = fmt(totalLiveMkt);
     if (holdUnrl) { holdUnrl.textContent = `${totalLiveUnreal>0?'+':''}${fmt(totalLiveUnreal)}`; holdUnrl.className = `sgd-val ${totalLiveUnreal>=0?'pos':'neg'}`; }
     if (holdReal) { holdReal.textContent = `${realPLAll>0?'+':''}${fmt(realPLAll)}`; holdReal.className = `sgd-val ${realPLAll>=0?'pos':'neg'}`; }
-    if (holdPl)   { holdPl.innerHTML = `${totalPLLive>0?'+':''}${fmt(totalPLLive)}<span style="font-size:10.5px;font-weight:500;margin-left:4px">(${pctAll}%)</span>`; holdPl.className = `sgd-val ${totalPLLive>=0?'pos':'neg'}`; }
+    if (holdPl) {
+      holdPl.textContent = `${totalPLLive>0?'+':''}${fmt(totalPLLive)}`;
+      holdPl.className   = `sgd-val ${totalPLLive>=0?'pos':'neg'}`;
+    }
+    const holdPlPct2 = el('hold-pl-pct');
+    if (holdPlPct2) { holdPlPct2.textContent = `${pctAll>0?'+':''}${pctAll}%`; holdPlPct2.className = totalPLLive>=0?'pos':'neg'; }
 
     // Update SGD portfolio
     if (usdsgd > 0) {
@@ -1548,7 +1553,7 @@ function renderInvesting(container) {
       <div class="sgd-grid" style="margin-bottom:12px">
         <div class="sgd-cell"><div class="sgd-lbl">Amount Invested</div><div class="sgd-val pos">${fmt(totalCostBasis)}</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Market Value</div><div class="sgd-val" id="hold-mkt">${fmt(totalMktVal)}</div></div>
-        <div class="sgd-cell"><div class="sgd-lbl">Total P&L</div><div class="sgd-val ${totalPLAll>=0?'pos':'neg'}" id="hold-pl">${totalPLAll>0?'+':''}${fmt(totalPLAll)}<span id="hold-pl-pct" style="font-size:10.5px;font-weight:500;margin-left:4px">(${totalPLPct}%)</span></div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Total P&L</div><div class="sgd-val ${totalPLAll>=0?'pos':'neg'}" id="hold-pl">${totalPLAll>0?'+':''}${fmt(totalPLAll)}</div><div id="hold-pl-pct" style="font-size:11px;margin-top:2px" class="${totalPLAll>=0?'pos':'neg'}">${totalPLPct>0?'+':''}${totalPLPct}%</div></div>
         <div class="sgd-divider"></div>
         <div class="sgd-cell"><div class="sgd-lbl">Unrealised</div><div class="sgd-val ${totalUnreal>=0?'pos':'neg'}" id="hold-unreal">${totalUnreal>0?'+':''}${fmt(totalUnreal)}</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Realised</div><div class="sgd-val ${totalRealPLAll>=0?'pos':'neg'}" id="hold-real">${totalRealPLAll>0?'+':''}${fmt(totalRealPLAll)}</div></div>
