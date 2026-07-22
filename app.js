@@ -1316,12 +1316,12 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       const dSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
       const oSgd    = dSgd - (ibData.prevWinningsSgd||0);
       const plSgdL  = pSgd - oSgd;
-      const pctAll  = oSgd > 0 && pSgd > 0 ? (plSgdL/oSgd*100).toFixed(1)
-                    : (Object.values(openPositions).reduce((s,p)=>s+(p.costBasis||0),0) > 0
-                       ? (totalPLLive/Object.values(openPositions).reduce((s,p)=>s+(p.costBasis||0),0)*100).toFixed(1)
-                       : '0.0');
-      holdPl.textContent = `${totalPLLive>0?'+':''}${fmt(totalPLLive)} (${pctAll}%)`;
+      const costAll = Object.values(openPositions).reduce((s,p)=>s+(p.costBasis||0),0);
+      const pctAll  = costAll > 0 ? (totalPLLive/costAll*100).toFixed(1) : '0.0';
+      holdPl.textContent = `${totalPLLive>0?'+':''}${fmt(totalPLLive)}`;
       holdPl.className   = `sgd-val ${totalPLLive>=0?'pos':'neg'}`;
+      const holdPlPct = el('hold-pl-pct');
+      if (holdPlPct) { holdPlPct.textContent = `${pctAll>0?'+':''}${pctAll}%`; holdPlPct.className = totalPLLive>=0?'pos':'neg'; };
     }
     const mktEl  = el('sum-mkt');
     const unrEl  = el('sum-unreal');
@@ -1549,14 +1549,14 @@ function renderInvesting(container) {
 
     const totalRealPLAll = trades.filter(t => t.qty < 0).reduce((s, t) => s + (t.realPL||0), 0);
     const totalPLAll     = totalUnreal + totalRealPLAll;
-    const totalPLPct     = origSgd > 0 && portSgd > 0 ? (plSgd / origSgd * 100).toFixed(1) : (totalCostBasis > 0 ? (totalPLAll / totalCostBasis * 100).toFixed(1) : '0.0');
+    const totalPLPct     = totalCostBasis > 0 ? (totalPLAll / totalCostBasis * 100).toFixed(1) : '0.0';
     const totalDiv       = (dividends || []).reduce((s, d) => s + d.amount, 0);
 
     subContent = `
       <div class="sgd-grid" style="margin-bottom:12px">
         <div class="sgd-cell"><div class="sgd-lbl">Amount Invested</div><div class="sgd-val pos">${fmt(totalCostBasis)}</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Market Value</div><div class="sgd-val" id="hold-mkt">${fmt(totalMktVal)}</div></div>
-        <div class="sgd-cell"><div class="sgd-lbl">Total P&L</div><div class="sgd-val ${totalPLAll>=0?'pos':'neg'}" id="hold-pl">${totalPLAll>0?'+':''}${fmt(totalPLAll)} (${totalPLPct}%)</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Total P&L</div><div class="sgd-val ${totalPLAll>=0?'pos':'neg'}" id="hold-pl">${totalPLAll>0?'+':''}${fmt(totalPLAll)}</div><div id="hold-pl-pct" style="font-size:11px;margin-top:2px" class="${totalPLAll>=0?'pos':'neg'}">${totalPLPct>0?'+':''}${totalPLPct}%</div></div>
         <div class="sgd-divider"></div>
         <div class="sgd-cell"><div class="sgd-lbl">Unrealised</div><div class="sgd-val ${totalUnreal>=0?'pos':'neg'}">${totalUnreal>0?'+':''}${fmt(totalUnreal)}</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Realised</div><div class="sgd-val ${totalRealPLAll>=0?'pos':'neg'}">${totalRealPLAll>0?'+':''}${fmt(totalRealPLAll)}</div></div>
