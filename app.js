@@ -172,23 +172,39 @@ async function ghGetIb() {
 
 async function ghPutIb(ibPayload) {
   const url = `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${GH_IB_FILEPATH}`;
-  // Always fetch the latest SHA to avoid 422 stale-SHA errors
-  try {
-    const check = await fetch(`${url}?ref=${GH_BRANCH}`, { headers: ghHeaders() });
-    if (check.ok) { const d = await check.json(); ibFileSha = d.sha; }
-  } catch(_) {}
 
-  const body = {
-    message: `Update ib.json — ${new Date().toISOString().slice(0, 10)}`,
-    content: btoa(unescape(encodeURIComponent(JSON.stringify(ibPayload, null, 2)))),
-    branch:  GH_BRANCH,
-  };
-  if (ibFileSha) body.sha = ibFileSha;
-  const res = await fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
-  if (!res.ok) throw new Error(`GitHub IB write error ${res.status}`);
-  const data = await res.json();
-  ibFileSha = data.content.sha;
-  ibData = ibPayload;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    // Always fetch fresh SHA before each attempt
+    try {
+      const check = await fetch(`${url}?ref=${GH_BRANCH}&t=${Date.now()}`, { headers: ghHeaders() });
+      if (check.ok) { const d = await check.json(); ibFileSha = d.sha; }
+      else if (check.status === 404) ibFileSha = null; // file doesn't exist yet
+    } catch(_) {}
+
+    const body = {
+      message: `Update ib.json — ${new Date().toISOString().slice(0, 10)}`,
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(ibPayload, null, 2)))),
+      branch:  GH_BRANCH,
+    };
+    if (ibFileSha) body.sha = ibFileSha;
+
+    const res = await fetch(url, { method: 'PUT', headers: ghHeaders(), body: JSON.stringify(body) });
+
+    if (res.ok) {
+      const data = await res.json();
+      ibFileSha = data.content.sha;
+      ibData = ibPayload;
+      return;
+    }
+
+    if ((res.status === 409 || res.status === 422) && attempt < 3) {
+      // SHA conflict — wait and retry with fresh SHA
+      await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+      continue;
+    }
+
+    throw new Error(`GitHub IB write error ${res.status}`);
+  }
 }
 
 // ── CSV parser ─────────────────────────────────────────────────────────────
@@ -1570,33 +1586,13 @@ window.toggleInvSym = function(sym) {
 };
 
 window.clearIbData = async function() {
-  if (!confirm('Clear all IB investing data? This cannot be undone.')) return;
-
-  const empty = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] };
-
-  // Must have a GitHub token to persist the clear
-  if (!ghToken) {
-    showTokenModal(async () => {
-      await doClear(empty);
-    });
-    return;
+  if (!confirm('Clear all IB investing data? This will also delete ib.json on GitHub.')) return;
+  ibData = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] };
+  if (ghToken) {
+    try { await ghPutIb(ibData); } catch(e) { console.warn('Could not clear ib.json:', e); }
   }
-  await doClear(empty);
+  renderInvesting(el('tabContent'));
 };
-
-async function doClear(empty) {
-  const status = el('ib-status');
-  const show = msg => { if (status) { status.textContent = msg; status.style.display = 'block'; } };
-  show('Clearing data…');
-  try {
-    await ghPutIb(empty);
-    show('✓ Data cleared');
-    setTimeout(() => { if (status) status.style.display = 'none'; }, 2000);
-    renderInvesting(el('tabContent'));
-  } catch(e) {
-    show(`⚠️ Clear failed: ${e.message} — try again after refreshing`);
-  }
-}
 
 function attachIbFileInput() {
   const input = el('ibCsvInput');
