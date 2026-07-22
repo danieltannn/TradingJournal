@@ -1301,10 +1301,17 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
     }
 
     // Update holdings summary
-    const holdMkt = el('hold-mkt');
-    const holdPl  = el('hold-pl');
-    const holdPlPct = el('hold-pl-pct');
+    const holdMkt    = el('hold-mkt');
+    const holdMktSt  = el('hold-mkt-status');
+    const holdUnreal = el('hold-unreal');
+    const holdPl     = el('hold-pl');
+    const holdPlPct  = el('hold-pl-pct');
     if (holdMkt) holdMkt.textContent = fmt(totalLiveMkt);
+    if (holdMktSt) { holdMktSt.textContent = 'live ✓'; holdMktSt.style.color = '#e3b341'; }
+    if (holdUnreal) {
+      holdUnreal.textContent = `${totalLiveUnreal>0?'+':''}${fmt(totalLiveUnreal)}`;
+      holdUnreal.className   = `sgd-val ${totalLiveUnreal>=0?'pos':'neg'}`;
+    }
     if (holdPl) {
       const realPLAll = (ibData.trades||[]).filter(t=>t.qty<0).reduce((s,t)=>s+(t.realPL||0),0);
       const totalPLLive = totalLiveUnreal + realPLAll;
@@ -1548,10 +1555,10 @@ function renderInvesting(container) {
     subContent = `
       <div class="sgd-grid" style="margin-bottom:12px">
         <div class="sgd-cell"><div class="sgd-lbl">Amount Invested</div><div class="sgd-val pos">${fmt(totalCostBasis)}</div></div>
-        <div class="sgd-cell"><div class="sgd-lbl">Market Value</div><div class="sgd-val" id="hold-mkt">${fmt(totalMktVal)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Market Value</div><div class="sgd-val" id="hold-mkt">${fmt(totalMktVal)}</div><div id="hold-mkt-status" style="font-size:10px;color:var(--text-tertiary);margin-top:2px">from import</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Total P&L</div><div class="sgd-val ${totalPLAll>=0?'pos':'neg'}" id="hold-pl">${totalPLAll>0?'+':''}${fmt(totalPLAll)}</div><div id="hold-pl-pct" style="font-size:11px;margin-top:2px" class="${totalPLAll>=0?'pos':'neg'}">${totalPLPct>0?'+':''}${totalPLPct}%</div></div>
         <div class="sgd-divider"></div>
-        <div class="sgd-cell"><div class="sgd-lbl">Unrealised</div><div class="sgd-val ${totalUnreal>=0?'pos':'neg'}">${totalUnreal>0?'+':''}${fmt(totalUnreal)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Unrealised</div><div class="sgd-val ${totalUnreal>=0?'pos':'neg'}" id="hold-unreal">${totalUnreal>0?'+':''}${fmt(totalUnreal)}</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Realised</div><div class="sgd-val ${totalRealPLAll>=0?'pos':'neg'}">${totalRealPLAll>0?'+':''}${fmt(totalRealPLAll)}</div></div>
         <div class="sgd-cell"><div class="sgd-lbl">Dividends</div><div class="sgd-val pos">${fmt(totalDiv)}</div></div>
       </div>
