@@ -18,7 +18,7 @@ let ghToken    = localStorage.getItem('gh_token') || '';
 let ghFileSha  = null; // needed by GitHub API to update an existing file
 let sgdData    = [];   // SGD deposit records
 let sgdFileSha = null; // SHA for sgd.json
-let ibData     = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [], prevWinningsSgd: 20887.50 };
+let ibData     = { trades: [], openPositions: {}, dividends: [], optionTrades: [], assignmentStocks: [], sgdDeposits: [], forexTrades: [], corporateActions: [] };
 let ibFileSha  = null; // SHA for ib.json
 
 const TABS = [
@@ -1238,8 +1238,8 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
     const syms = tickers.filter(s => YF_MAP[s]).map(s => YF_MAP[s]);
     if (!syms.length) return;
 
-    // Include GBPUSD rate so we can convert SPYL.L if it's quoted in GBP
-    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms.join(',')},GBPUSD%3DX`;
+    // Include GBPUSD for SPYL.L conversion + USDSGD for live SGD portfolio value
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms.join(',')},GBPUSD%3DX,USDSGD%3DX`;
     const res = await fetch(url, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -1248,11 +1248,12 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
 
     // Get GBP/USD rate for SPYL conversion if needed
     const gbpusd = quotes.find(q => q.symbol === 'GBPUSD=X')?.regularMarketPrice || 1;
+    const usdsgd = quotes.find(q => q.symbol === 'USDSGD=X')?.regularMarketPrice || 0;
 
     // Build price map — convert GBP-quoted prices to USD
     const livePrices = {};
     for (const q of quotes) {
-      if (q.symbol === 'GBPUSD=X') continue;
+      if (q.symbol === 'GBPUSD=X' || q.symbol === 'USDSGD=X') continue;
       const price = q.regularMarketPrice;
       const inUsd = (q.currency === 'GBp') ? price / 100 * gbpusd   // pence → USD
                   : (q.currency === 'GBP') ? price * gbpusd          // pounds → USD
@@ -1300,24 +1301,25 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       }
     }
 
-    // Update summary: convert live USD market value to SGD
+    // Update summary: convert live USD total to SGD using live USDSGD rate
     const mktEl  = el('sum-mkt');
     const unrEl  = el('sum-unreal');
     const retEl  = el('sum-return');
     const fxList = (ibData.forexTrades||[]).filter(f => f.usdAmt > 0);
-    const fxRate = fxList.length > 0
+    const histRate = fxList.length > 0
       ? fxList.reduce((s,f)=>s+Math.abs(f.sgdAmt),0) / fxList.reduce((s,f)=>s+f.usdAmt,0)
       : 0;
-    if (fxRate > 0) {
-      const liveSgd    = totalLiveMkt * fxRate;
-      const prevWin    = ibData.prevWinningsSgd || 0;
-      const deps       = (ibData.sgdDeposits||[]);
-      const netSgd     = deps.reduce((s,d)=>s+d.amount,0);
-      const origSgd    = netSgd - prevWin;
-      const plSgd      = liveSgd - origSgd;
-      const plPct      = origSgd > 0 ? (plSgd / origSgd * 100).toFixed(1) : '0.0';
-      const fmtS       = n => 'S$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
-      if (mktEl) mktEl.innerHTML = `${fmtS(liveSgd)}<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${fmt(totalLiveMkt)} USD</div>`;
+    const liveRate = usdsgd || histRate;
+    if (liveRate > 0) {
+      const liveSgd   = totalLiveMkt * liveRate;
+      const prevWin   = ibData.prevWinningsSgd || 0;
+      const netSgd    = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0);
+      const origSgd   = netSgd - prevWin;
+      const plSgd     = liveSgd - origSgd;
+      const plPct     = origSgd > 0 ? (plSgd / origSgd * 100).toFixed(1) : '0.0';
+      const fmtS      = n => 'S$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+      const rateLabel = usdsgd ? `live 1 USD = S$${usdsgd.toFixed(4)}` : `avg S$${histRate.toFixed(4)}`;
+      if (mktEl) mktEl.innerHTML = `${fmtS(liveSgd)}<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${fmt(totalLiveMkt)} USD · ${rateLabel}</div>`;
       if (unrEl) { unrEl.textContent = `${plSgd>0?'+':''}${fmtS(plSgd)}`; unrEl.className = `sgd-val ${plSgd>=0?'pos':'neg'}`; }
       if (retEl) { retEl.textContent = `${plPct>0?'+':''}${plPct}%`; retEl.className = plSgd>=0?'pos':'neg'; }
     }
@@ -1391,17 +1393,9 @@ function renderInvesting(container) {
   const returnPct = totalCostBasis > 0 ? (totalUnreal / totalCostBasis * 100).toFixed(1) : '0.0';
 
   // ── Account details (always visible) ──
-  // SGD portfolio conversion using effective forex rate
-  const sgdNetDeposited = sgdIn + sgdOut; // net from bank (sgdOut is negative)
-  const prevWinningsSgd = (ibData.prevWinningsSgd || 0); // recycled trading profits
-  const originalSgd     = sgdNetDeposited - prevWinningsSgd; // true out-of-pocket
-  const portfolioSgd    = effRate > 0 ? totalMktVal * effRate : 0;
-  const plSgd           = portfolioSgd - originalSgd;
-  const plSgdPct        = originalSgd > 0 ? (plSgd / originalSgd * 100).toFixed(1) : '0.0';
-
   const accountHtml = `
     <div class="inv-account-details">
-      <div class="inv-acct-row inv-acct-3">
+      <div class="inv-acct-row">
         <div class="inv-acct-item">
           <div class="sgd-lbl">Deposited (SGD)</div>
           <div class="sgd-val pos">${fmtSgd(sgdIn)}</div>
@@ -1411,13 +1405,6 @@ function renderInvesting(container) {
           <div class="sgd-val neg">${fmtSgd(Math.abs(sgdOut))}</div>
         </div>
         <div class="inv-acct-item">
-          <div class="sgd-lbl">Net (SGD)</div>
-          <div class="sgd-val">${fmtSgd(sgdNetDeposited)}</div>
-        </div>
-      </div>
-      <div class="inv-acct-divider"></div>
-      <div class="inv-acct-row inv-acct-3">
-        <div class="inv-acct-item">
           <div class="sgd-lbl">Deposited (USD)</div>
           <div class="sgd-val pos">${fmt(usdIn)}</div>
         </div>
@@ -1425,27 +1412,24 @@ function renderInvesting(container) {
           <div class="sgd-lbl">Withdrawn (USD)</div>
           <div class="sgd-val neg">${fmt(Math.abs(usdOut))}</div>
         </div>
-        <div class="inv-acct-item">
-          <div class="sgd-lbl">Net (USD)</div>
-          <div class="sgd-val">${fmt(usdIn + usdOut)}</div>
-        </div>
       </div>
       <div class="inv-acct-divider"></div>
-      <div class="inv-acct-row inv-acct-3">
+      <div class="inv-acct-row">
         <div class="inv-acct-item">
-          <div class="sgd-lbl">Original Amount</div>
-          <div class="sgd-val">${fmtSgd(originalSgd)}</div>
-          ${prevWinningsSgd > 0 ? `<div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">less ${fmtSgd(prevWinningsSgd)} prev winnings</div>` : ''}
+          <div class="sgd-lbl">Amount Invested</div>
+          <div class="sgd-val pos">${fmt(totalCostBasis)}</div>
         </div>
         <div class="inv-acct-item">
-          <div class="sgd-lbl">Portfolio (SGD)</div>
-          <div id="sum-mkt" class="sgd-val">${portfolioSgd > 0 ? fmtSgd(portfolioSgd) : '—'}</div>
-          <div style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${fmt(totalMktVal)} USD</div>
+          <div class="sgd-lbl">Market Value</div>
+          <div id="sum-mkt" class="sgd-val">${fmt(totalMktVal)}</div>
         </div>
         <div class="inv-acct-item">
-          <div class="sgd-lbl">P&L (SGD)</div>
-          <div id="sum-unreal" class="sgd-val ${plSgd >= 0 ? 'pos' : 'neg'}">${plSgd > 0 ? '+' : ''}${portfolioSgd > 0 ? fmtSgd(plSgd) : '—'}</div>
-          <div id="sum-return" style="font-size:11px;margin-top:2px" class="${plSgd >= 0 ? 'pos' : 'neg'}">${portfolioSgd > 0 ? (plSgdPct > 0 ? '+' : '') + plSgdPct + '%' : ''}</div>
+          <div class="sgd-lbl">Unrealised P&L</div>
+          <div id="sum-unreal" class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${totalUnreal > 0 ? '+' : ''}${fmt(totalUnreal)}</div>
+        </div>
+        <div class="inv-acct-item">
+          <div class="sgd-lbl">Return</div>
+          <div id="sum-return" class="sgd-val ${totalUnreal >= 0 ? 'pos' : 'neg'}">${returnPct}%</div>
         </div>
       </div>
     </div>`;
@@ -1489,9 +1473,6 @@ function renderInvesting(container) {
         </tr>`;
       }).join('');
 
-      const totalPL     = (pos.unrealPL || 0) + totalRealPL;
-      const totalPLPct  = pos.costBasis > 0 ? (totalPL / pos.costBasis * 100).toFixed(1) : '0.0';
-
       return `
         <div class="inv-sym-card" id="inv-sym-${sym}">
           <div class="inv-sym-header" onclick="toggleInvSym('${sym}')">
@@ -1501,10 +1482,10 @@ function renderInvesting(container) {
               <div class="inv-sym-meta">
                 <span>${pos.qty.toFixed(2)} sh</span>
                 <span class="inv-sep">·</span>
-                <span>avg $${(pos.costPrice||0).toFixed(2)}</span>
+                <span>${buyCount} buy${buyCount!==1?'s':''}${sellCount ? ' · ' + sellCount + ' sell' + (sellCount!==1?'s':'') : ''}</span>
               </div>
             </div>
-            <div class="inv-sym-right" style="gap:10px">
+            <div class="inv-sym-right">
               <div class="inv-stat">
                 <span class="inv-stat-label">Invested</span>
                 <span class="inv-stat-val pos">${fmt(pos.costBasis)}</span>
@@ -1514,9 +1495,13 @@ function renderInvesting(container) {
                 <span class="inv-stat-val" id="live-mkt-${sym}">${fmt(pos.mktValue)}</span>
               </div>
               <div class="inv-stat">
-                <span class="inv-stat-label">Total P&L</span>
-                <span class="inv-stat-val ${totalPL >= 0 ? 'pos' : 'neg'}" id="live-unreal-${sym}">${totalPL > 0 ? '+' : ''}${fmt(totalPL)} (${totalPLPct}%)</span>
+                <span class="inv-stat-label">Unreal P&L</span>
+                <span class="inv-stat-val ${pos.unrealPL >= 0 ? 'pos' : 'neg'}" id="live-unreal-${sym}">${pos.unrealPL > 0 ? '+' : ''}${fmt(pos.unrealPL)}${unrealPct ? ` (${unrealPct}%)` : ''}</span>
               </div>
+              ${totalRealPL !== 0 ? `<div class="inv-stat">
+                <span class="inv-stat-label">Real P&L</span>
+                <span class="inv-stat-val ${totalRealPL >= 0 ? 'pos' : 'neg'}">${totalRealPL > 0 ? '+' : ''}${fmt(totalRealPL)}</span>
+              </div>` : ''}
               <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
             </div>
           </div>
