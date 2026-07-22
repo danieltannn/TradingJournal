@@ -984,6 +984,9 @@ tr:hover td { background: var(--bg-secondary); }
   grid-template-columns: repeat(4, 1fr);
   gap: 0;
 }
+.inv-acct-row.inv-acct-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
 .inv-acct-item {
   padding: 10px 12px;
   border-right: 0.5px solid var(--border);
@@ -995,10 +998,8 @@ tr:hover td { background: var(--bg-secondary); }
 }
 @media (max-width: 480px) {
   .inv-acct-row { grid-template-columns: repeat(2, 1fr); }
-  .inv-acct-item:nth-child(2) { border-right: none; }
-  .inv-acct-item:nth-child(3),
-  .inv-acct-item:nth-child(4) { border-top: 0.5px solid var(--border); }
-  .inv-acct-item:nth-child(4) { border-right: none; }
+  .inv-acct-row.inv-acct-3 { grid-template-columns: repeat(3, 1fr); }
+  .inv-acct-item { padding: 8px 10px; }
 }
 
 .inv-subtab-bar {
