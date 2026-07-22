@@ -19,9 +19,7 @@ jobs:
       - name: Fetch prices
         run: |
           python3 << 'PYEOF'
-          import json, datetime
-          import yfinance as yf
-          import requests
+          import json, datetime, yfinance as yf, requests
 
           result = {
             'timestamp': datetime.datetime.utcnow().isoformat() + 'Z',
@@ -29,72 +27,74 @@ jobs:
             'prices': {}
           }
 
-          # ── SGD rate: try multiple sources ──
-          sgd_sources = [
-            ('frankfurter', 'https://api.frankfurter.app/latest?from=USD&to=SGD', lambda d: d['rates']['SGD']),
-            ('er-api',      'https://open.er-api.com/v6/latest/USD',              lambda d: d['rates']['SGD']),
-            ('cdn-api',     'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', lambda d: d['usd']['sgd']),
-          ]
-          for name, url, extract in sgd_sources:
+          # ── SGD rate ──
+          for url, extract in [
+            ('https://api.frankfurter.app/latest?from=USD&to=SGD',  lambda d: d['rates']['SGD']),
+            ('https://open.er-api.com/v6/latest/USD',               lambda d: d['rates']['SGD']),
+            ('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json', lambda d: d['usd']['sgd']),
+          ]:
             try:
-              r = requests.get(url, timeout=10)
-              r.raise_for_status()
+              r = requests.get(url, timeout=10); r.raise_for_status()
               result['usdsgd'] = round(extract(r.json()), 6)
-              print(f'SGD rate from {name}: {result["usdsgd"]}')
-              break
+              print(f'SGD: {result["usdsgd"]} from {url}'); break
             except Exception as e:
-              print(f'SGD {name} failed: {e}')
+              print(f'SGD failed {url}: {e}')
 
-          # ── Stock prices via yfinance ──
-          TICKERS = {
-            'DGRO': 'DGRO', 'FBTC': 'FBTC', 'QQQM': 'QQQM',
-            'SCHD': 'SCHD', 'SMH': 'SMH',   'VGT': 'VGT',
-            'SPYL': 'SPYL.L',
-          }
+          # ── GBP/USD for SPYL ──
+          gbpusd = 1.27  # fallback
           try:
-            yf_syms = list(TICKERS.values())
-            data = yf.download(yf_syms, period='1d', progress=False, auto_adjust=True)
-            closes = data['Close'].iloc[-1]
-
-            # Get GBP/USD for SPYL conversion
-            gbpusd = 1.0
-            try:
-              fx = yf.download('GBPUSD=X', period='1d', progress=False)
-              gbpusd = float(fx['Close'].iloc[-1])
-              print(f'GBPUSD: {gbpusd}')
-            except Exception as e:
-              print(f'GBPUSD failed: {e}')
-
-            for our_sym, yf_sym in TICKERS.items():
-              try:
-                price = float(closes[yf_sym])
-                if our_sym == 'SPYL':
-                  # SPYL.L is in GBP pence on LSE
-                  price = price / 100 * gbpusd
-                result['prices'][our_sym] = round(price, 4)
-                print(f'{our_sym}: {result["prices"][our_sym]}')
-              except Exception as e:
-                print(f'{our_sym} price failed: {e}')
+            fx = yf.Ticker('GBPUSD=X')
+            gbpusd = fx.fast_info.last_price
+            print(f'GBPUSD: {gbpusd}')
           except Exception as e:
-            print(f'yfinance batch failed: {e}')
-            # Fallback: fetch individually
-            for our_sym, yf_sym in TICKERS.items():
-              try:
-                t = yf.Ticker(yf_sym)
-                price = t.fast_info.last_price
-                if our_sym == 'SPYL':
-                  price = price / 100 * gbpusd
-                result['prices'][our_sym] = round(price, 4)
-                print(f'{our_sym} (individual): {result["prices"][our_sym]}')
-              except Exception as e:
-                print(f'{our_sym} individual failed: {e}')
+            print(f'GBPUSD failed: {e}')
 
-          print('\nFinal result:', json.dumps(result, indent=2))
+          # ── Stock prices ──
+          US_TICKERS = ['DGRO', 'FBTC', 'QQQM', 'SCHD', 'SMH', 'VGT']
+
+          # US tickers — straightforward
+          for sym in US_TICKERS:
+            try:
+              t = yf.Ticker(sym)
+              price = t.fast_info.last_price
+              result['prices'][sym] = round(float(price), 4)
+              print(f'{sym}: ${result["prices"][sym]}')
+            except Exception as e:
+              print(f'{sym} failed: {e}')
+
+          # SPYL — listed on LSE, USD-denominated class
+          # Try multiple tickers until we get a sensible price (~$18)
+          for spyl_ticker in ['SPYL.L', 'SPYL']:
+            try:
+              t = yf.Ticker(spyl_ticker)
+              fi = t.fast_info
+              price = float(fi.last_price)
+              currency = getattr(fi, 'currency', 'USD')
+              print(f'SPYL raw: {price} {currency} (from {spyl_ticker})')
+
+              # Convert to USD based on currency
+              if currency == 'GBp':
+                price = price / 100 * gbpusd   # pence → GBP → USD
+              elif currency == 'GBP':
+                price = price * gbpusd           # GBP → USD
+              # else already USD
+
+              # Sanity check: SPYL should be roughly $15-$25
+              if 10 < price < 50:
+                result['prices']['SPYL'] = round(price, 4)
+                print(f'SPYL USD: ${result["prices"]["SPYL"]}')
+                break
+              else:
+                print(f'SPYL price {price} out of range, trying next ticker')
+            except Exception as e:
+              print(f'SPYL {spyl_ticker} failed: {e}')
+
+          print('\nResult:', json.dumps(result, indent=2))
           with open('prices.json', 'w') as f:
             json.dump(result, f, indent=2)
           PYEOF
 
-      - name: Commit prices.json
+      - name: Commit
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
