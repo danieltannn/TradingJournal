@@ -1247,7 +1247,6 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
   const hide = () => setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 4000);
 
   try {
-    // loading silently
     // Use GitHub Contents API — always fresh, no CDN caching issues
     const res = await fetch(
       `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/prices.json?ref=data&t=${Date.now()}`,
@@ -1343,11 +1342,9 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       if (retEl)  { retEl.textContent = `${plPct>0?'+':''}${plPct}%`; retEl.className = plSgd>=0?'pos':'neg'; }
     }
 
-    
-
+    hide();
   } catch(e) {
-    
-
+    hide();
   }
 }
 
@@ -1655,10 +1652,8 @@ window.toggleOrigBreakdown = function() {
 window.refreshLivePrices = async function() {
   const btn    = document.getElementById('refresh-prices-btn');
   const status = document.getElementById('ib-status');
-  const show   = msg => { if (status) { status.textContent = msg; status.style.display = 'block'; } };
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Running…'; }
-  show('⏳ Triggering price update…');
 
   try {
     // Trigger GitHub Actions workflow
@@ -1669,12 +1664,10 @@ window.refreshLivePrices = async function() {
     if (!res.ok) throw new Error(`GitHub API error ${res.status}`);
 
     // Poll prices.json every 5 seconds for up to 90 seconds
-    show('⏳ Workflow running — fetching prices…');
     const startTs = Date.now();
     let secs = 0;
     const interval = setInterval(async () => {
       secs += 5;
-      show(`⏳ Waiting for prices… (${secs}s)`);
       try {
         const r = await fetch(
           `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/prices.json?ref=data&t=${Date.now()}`,
@@ -1797,8 +1790,7 @@ async function mergeAndCommitIb(csvText) {
       setTimeout(() => { if (sbar) sbar.style.display = 'none'; }, 5000);
       renderTabContent();
     } catch(e) {
-      
-    }
+      }
   };
 
   if (!ghToken) { showTokenModal(doSave); } else { await doSave(); }
