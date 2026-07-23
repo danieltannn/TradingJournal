@@ -1432,15 +1432,15 @@ function renderInvesting(container) {
   const accountHtml = `
     <div class="inv-account-details">
       <div class="inv-acct-row inv-acct-3">
-        <div class="inv-acct-item"><div class="sgd-lbl">Deposited (SGD)</div><div class="sgd-val pos">${fmtSgd(sgdIn)}</div></div>
-        <div class="inv-acct-item"><div class="sgd-lbl">Withdrawn (SGD)</div><div class="sgd-val neg">${fmtSgd(Math.abs(sgdOut))}</div></div>
-        <div class="inv-acct-item"><div class="sgd-lbl">Net (SGD)</div><div class="sgd-val">${fmtSgd(sgdNet)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Deposited SGD</div><div class="sgd-val pos">${fmtSgd(sgdIn)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Withdrawn SGD</div><div class="sgd-val neg">${fmtSgd(Math.abs(sgdOut))}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Net SGD</div><div class="sgd-val">${fmtSgd(sgdNet)}</div></div>
       </div>
       <div class="inv-acct-divider"></div>
       <div class="inv-acct-row inv-acct-3">
-        <div class="inv-acct-item"><div class="sgd-lbl">Deposited (USD)</div><div class="sgd-val pos">${fmt(usdIn)}</div></div>
-        <div class="inv-acct-item"><div class="sgd-lbl">Withdrawn (USD)</div><div class="sgd-val neg">${fmt(Math.abs(usdOut))}</div></div>
-        <div class="inv-acct-item"><div class="sgd-lbl">Net (USD)</div><div class="sgd-val">${fmt(usdIn + usdOut)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Deposited USD</div><div class="sgd-val pos">${fmt(usdIn)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Withdrawn USD</div><div class="sgd-val neg">${fmt(Math.abs(usdOut))}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Net USD</div><div class="sgd-val">${fmt(usdIn + usdOut)}</div></div>
       </div>
       <div class="inv-acct-divider"></div>
       <div class="inv-acct-row inv-acct-3">
@@ -1656,7 +1656,7 @@ window.refreshLivePrices = async function() {
   const show   = msg => { if (status) { status.textContent = msg; status.style.display = 'block'; } };
 
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader-2" style="animation:spin 1s linear infinite"></i> Running…'; }
-  show('⏳ Triggering price update…');
+  // status shown only on completion
 
   try {
     // Trigger GitHub Actions workflow
@@ -1667,12 +1667,10 @@ window.refreshLivePrices = async function() {
     if (!res.ok) throw new Error(`GitHub API error ${res.status}`);
 
     // Poll prices.json every 5 seconds for up to 90 seconds
-    show('⏳ Workflow running — fetching prices…');
     const startTs = Date.now();
     let secs = 0;
     const interval = setInterval(async () => {
       secs += 5;
-      show(`⏳ Waiting for prices… (${secs}s)`);
       try {
         const r = await fetch(
           `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/data/prices.json?t=${Date.now()}`,
