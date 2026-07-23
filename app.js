@@ -1247,7 +1247,7 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
   const hide = () => setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 4000);
 
   try {
-    show('⏳ Loading live prices…');
+    // loading silently
     // Use GitHub Contents API — always fresh, no CDN caching issues
     const res = await fetch(
       `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/prices.json?ref=data&t=${Date.now()}`,
@@ -1343,11 +1343,11 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
       if (retEl)  { retEl.textContent = `${plPct>0?'+':''}${plPct}%`; retEl.className = plSgd>=0?'pos':'neg'; }
     }
 
-    show(`✓ Live prices loaded (${loaded}/${tickers.length}) · updated ${updated}`);
-    hide();
+    
+
   } catch(e) {
-    show(`⚠️ ${e.message}`);
-    hide();
+    
+
   }
 }
 
@@ -1688,8 +1688,6 @@ window.refreshLivePrices = async function() {
             // Fresh data received
             clearInterval(interval);
             if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
-            show('✓ Live prices updated!');
-            setTimeout(() => { if (status) status.style.display = 'none'; }, 3000);
             // Re-fetch and update UI
             const openPositions = ibData.openPositions || {};
             await fetchAndUpdateLivePrices(Object.keys(openPositions), openPositions);
@@ -1699,15 +1697,11 @@ window.refreshLivePrices = async function() {
       if (secs >= 90) {
         clearInterval(interval);
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
-        show('⚠️ Timed out — try again in a moment');
-        setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
       }
     }, 5000);
 
   } catch(e) {
-    show(`⚠️ ${e.message}`);
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
-    setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
   }
 };
 
@@ -1803,7 +1797,7 @@ async function mergeAndCommitIb(csvText) {
       setTimeout(() => { if (sbar) sbar.style.display = 'none'; }, 5000);
       renderTabContent();
     } catch(e) {
-      show(`⚠️ ${e.message}`);
+      
     }
   };
 
