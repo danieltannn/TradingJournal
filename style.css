@@ -854,7 +854,7 @@ tr:hover td { background: var(--bg-secondary); }
   height: 0;
   border-bottom: 0.5px solid var(--border);
 }
-.sgd-lbl { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+.sgd-lbl { font-size: 10px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; white-space: nowrap; }
 .sgd-val { font-size: 13px; font-weight: 600; color: var(--text); }
 .sgd-val.pos { color: var(--green); }
 .sgd-val.neg { color: var(--red); }
