@@ -1008,36 +1008,6 @@ function buildTradesTable(positions, q, filter) {
       ${!startOpen ? tradeBody : ''}
     </div>`;
   }).join('');
-    const isRoll    = p.isRoll;
-    const pnlVal    = isRoll ? p.openTotal + p.closeTotal : p.isClosed ? p.netPnl : p.openTotal;
-    const pnlLabel  = isRoll ? 'Roll Credit' : p.isClosed ? 'Net P&L' : 'Open P&L';
-    const cardId    = `trade-${pages['trades']||1}-${idx}`;
-    const startOpen = !p.isClosed || isRoll;
-
-    // Border colour: green=open/winner, red=loser, orange=expired, blue=roll
-    const borderColor = isRoll         ? 'var(--accent2)'
-                      : p.isExpired    ? 'var(--text-tertiary)'
-                      : !p.isClosed    ? 'var(--green)'
-                      : pnlVal >= 0    ? 'var(--green)'
-                      :                  'var(--red)';
-
-    // Status badge(s)
-    const statusBadge = isRoll
-      ? `<span class="badge trade">Roll</span><span class="badge open">Open</span>`
-      : p.isClosed
-        ? `<span class="badge ${p.isExpired?'expired':'closed'}">${p.isExpired?'Expired':'Closed'}</span>`
-        : `<span class="badge open">Open</span>`;
-
-    const legCount = (p.openLegs||[]).length + (p.closeLegs||[]).length + (p.expiryRows||[]).length;
-
-    // Roll body
-    const rollCloseLegs  = isRoll ? p.allLegsForCard.filter(l => l['Action'].includes('CLOSE')) : [];
-    const rollOpenLegs   = isRoll ? p.allLegsForCard.filter(l => l['Action'].includes('OPEN'))  : [];
-    const rollCloseTotal = rollCloseLegs.reduce((s,l)=>s+parseVal(l['Total']),0);
-    const rollOpenTotal  = rollOpenLegs.reduce((s,l)=>s+parseVal(l['Total']),0);
-    const rollExpClose   = rollCloseLegs.length ? rollCloseLegs[0]['Expiration Date']||'' : '';
-    const rollExpOpen    = rollOpenLegs.length  ? rollOpenLegs[0]['Expiration Date']||''  : '';
-
 
   const pg=`<div class="pg"><span>${total} position${total!==1?'s':''}</span>${pages['trades']>1?`<button onclick="changePage('trades',-1)">← Prev</button>`:''}<span>Page ${pages['trades']} / ${totalPages}</span>${pages['trades']<totalPages?`<button onclick="changePage('trades',1)">Next →</button>`:''}</div>`;
   return `<div class="trades-list">${rowsHtml}</div>${pg}`;
