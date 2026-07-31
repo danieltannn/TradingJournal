@@ -1112,3 +1112,7 @@ tr:hover td { background: var(--bg-secondary); }
 }
 .cal-open   { background: rgba(29,158,117,0.15); }
 .cal-closed { background: rgba(88,166,255,0.15); }
+
+.cal-grid-5 { grid-template-columns: repeat(5, 1fr) !important; }
+.cal-day.cal-active:hover { background: var(--bg-tertiary); }
+.cal-day.cal-active { transition: background .15s; }
