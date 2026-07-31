@@ -616,14 +616,16 @@ function renderSummary(container) {
   const minMonth = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
   const maxMonth = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
 
+  // Map weekday to Mon-Fri column (0=Mon … 4=Fri), returns -1 for weekend
+  function wdCol(jsDay) { return jsDay === 0 || jsDay === 6 ? -1 : jsDay - 1; }
+
   function buildCalendar() {
     const year = calYear, month = calMonth;
-    const firstDay  = new Date(year, month, 1).getDay(); // 0=Sun
     const daysInMon = new Date(year, month+1, 0).getDate();
     const monthLabel = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
     // Monthly totals
-    let monthOpenTotal  = 0, monthCloseTotal = 0;
+    let monthOpenTotal = 0, monthCloseTotal = 0;
     for (let d = 1; d <= daysInMon; d++) {
       const key = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
       monthOpenTotal  += openByDay[key]  || 0;
@@ -631,19 +633,31 @@ function renderSummary(container) {
     }
     const monthNet = monthOpenTotal + monthCloseTotal;
 
-    // Day cells
+    // Build weekday-only cells (Mon–Fri, 5 columns)
+    // Find first weekday and its column to create offset empties
     let cells = '';
-    for (let i = 0; i < firstDay; i++) cells += `<div class="cal-day cal-empty"></div>`;
+    let started = false;
     for (let d = 1; d <= daysInMon; d++) {
-      const key = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const op  = openByDay[key]  || 0;
-      const cl  = closeByDay[key] || 0;
+      const date   = new Date(year, month, d);
+      const col    = wdCol(date.getDay());
+      if (col === -1) continue; // skip weekend
+      if (!started) {
+        // Add empty offset cells
+        for (let i = 0; i < col; i++) cells += `<div class="cal-day cal-empty"></div>`;
+        started = true;
+      }
+      const key   = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const op    = openByDay[key]  || 0;
+      const cl    = closeByDay[key] || 0;
       const hasOp = op !== 0, hasCl = cl !== 0;
-      const today = new Date(); const isToday = today.getFullYear()===year && today.getMonth()===month && today.getDate()===d;
-      cells += `<div class="cal-day${isToday?' cal-today':''}">
+      const today = new Date();
+      const isToday = today.getFullYear()===year && today.getMonth()===month && today.getDate()===d;
+      const hasActivity = hasOp || hasCl;
+      cells += `<div class="cal-day${isToday?' cal-today':''}${hasActivity?' cal-active':''}"
+        ${hasActivity ? `onclick="calJumpToDate('${key}')" style="cursor:pointer"` : ''}>
         <span class="cal-date">${d}</span>
-        ${hasOp  ? `<span class="cal-pnl cal-open ${op>=0?'pos':'neg'}">${op>0?'+':''}${fmt(op)}</span>` : ''}
-        ${hasCl  ? `<span class="cal-pnl cal-closed ${cl>=0?'pos':'neg'}">${cl>0?'+':''}${fmt(cl)}</span>` : ''}
+        ${hasOp ? `<span class="cal-pnl cal-open ${op>=0?'pos':'neg'}">${op>0?'+':''}${fmt(op)}</span>` : ''}
+        ${hasCl ? `<span class="cal-pnl cal-closed ${cl>=0?'pos':'neg'}">${cl>0?'+':''}${fmt(cl)}</span>` : ''}
       </div>`;
     }
 
@@ -662,11 +676,11 @@ function renderSummary(container) {
       <div class="cal-legend">
         <span class="cal-legend-dot cal-open-dot"></span><span>Open P&L</span>
         <span class="cal-legend-dot cal-close-dot" style="margin-left:12px"></span><span>Closed P&L</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--text-tertiary)">Tap day to view trades</span>
       </div>
-      <div class="cal-grid">
-        <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div>
-        <div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div>
-        <div class="cal-dow">Sat</div>
+      <div class="cal-grid cal-grid-5">
+        <div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div>
+        <div class="cal-dow">Thu</div><div class="cal-dow">Fri</div>
         ${cells}
       </div>`;
   }
@@ -679,6 +693,26 @@ window.calNav = function(dir) {
   if (calMonth < 0)  { calMonth = 11; calYear--; }
   if (calMonth > 11) { calMonth = 0;  calYear++; }
   renderSummary(el('tabContent'));
+};
+
+window.calJumpToDate = function(dateStr) {
+  // Switch to Trades tab and search for that date
+  activeTab = 2;
+  renderTabs();
+  renderTabContent();
+  // After render, set search to the date and filter
+  requestAnimationFrame(() => {
+    const input = el('tradeSearch');
+    if (input) {
+      input.value = dateStr;
+      filterTrades(dateStr);
+      // Scroll to first result
+      setTimeout(() => {
+        const first = document.querySelector('#tradesTable .inv-sym-card');
+        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  });
 };
 
 // ── Deposits tab ───────────────────────────────────────────────────────────
@@ -896,7 +930,7 @@ function buildTradesTable(positions, q, filter) {
   let rows = positions;
   if (filter==='open')   rows=rows.filter(p=>!p.isClosed);
   if (filter==='closed') rows=rows.filter(p=>p.isClosed);
-  if (q) { const ql=q.toLowerCase(); rows=rows.filter(p=>p.ul.toLowerCase().includes(ql)||p.expDate.toLowerCase().includes(ql)||p.openLegs.some(l=>l['Symbol'].toLowerCase().includes(ql))); }
+  if (q) { const ql=q.toLowerCase(); rows=rows.filter(p=>p.ul.toLowerCase().includes(ql)||p.expDate.toLowerCase().includes(ql)||(p.openDate||'').includes(ql)||(p.closeDate||'').includes(ql)||p.openLegs.some(l=>l['Symbol'].toLowerCase().includes(ql))); }
   if (!rows.length) return '<div class="empty">No positions found</div>';
 
   // ── Chain detection: find oids that have been "rolled over" (superseded by another roll) ──
