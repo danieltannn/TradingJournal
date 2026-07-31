@@ -582,47 +582,104 @@ function paginate(key, rows, renderRow, headers) {
 }
 
 // ── Summary tab ────────────────────────────────────────────────────────────
+let calYear  = new Date().getFullYear();
+let calMonth = new Date().getMonth(); // 0-indexed
+
 function renderSummary(container) {
   const { positions } = processed;
-  const closed = positions.filter(p => p.isClosed);
-  const sorted = [...closed].sort((a, b) => b.netPnl - a.netPnl);
-  const monthPnl = {};
-  processed.tradeRows.forEach(r => {
-    const d = new Date(r['Date']);
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    monthPnl[key] = (monthPnl[key] || 0) + parseVal(r['Value']) + parseVal(r['Commissions']) - Math.abs(parseVal(r['Fees']));
-  });
-  const months = Object.keys(monthPnl).sort();
-  container.innerHTML = `
-    <div class="chart-card">
-      <h3>Monthly P&L</h3>
-      <div style="position:relative;height:${Math.max(180, months.length*26)}px">
-        <canvas id="monthChart" role="img" aria-label="Monthly P&L bar chart">Monthly P&L for ${months.length} months.</canvas>
-      </div>
-    </div>`;
 
-  requestAnimationFrame(() => {
-    const canvas = el('monthChart');
-    if (!canvas || !window.Chart) return;
-    const vals = months.map(m => +monthPnl[m].toFixed(2));
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels: months.map(m => { const [y,mo] = m.split('-'); return new Date(y,mo-1).toLocaleString('en-US',{month:'short',year:'2-digit'}); }),
-        datasets: [{ label: 'P&L', data: vals, backgroundColor: vals.map(v => v >= 0 ? 'rgba(29,158,117,0.75)' : 'rgba(216,90,48,0.75)'), borderRadius: 3, borderSkipped: false }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { font:{size:11}, color: isDark?'#a0a09b':'#6b6b67', autoSkip:false, maxRotation:45 }, grid:{color: isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.07)'} },
-          y: { ticks: { font:{size:11}, color: isDark?'#a0a09b':'#6b6b67', callback: v => (v<0?'-':'')+'$'+Math.abs(v).toLocaleString() }, grid:{color: isDark?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.07)'} }
-        }
-      }
-    });
+  // Build per-day P&L maps
+  // openDay: credit/debit received when opening a position
+  // closeDay: cost to close (closeTotal only, not netPnl — so they add correctly across months)
+  const openByDay  = {};
+  const closeByDay = {};
+
+  positions.forEach(pos => {
+    if (pos.openDate) {
+      const day = pos.openDate.slice(0, 10);
+      openByDay[day] = (openByDay[day] || 0) + (pos.openTotal || 0);
+    }
+    if (pos.isClosed && pos.closeDate) {
+      const day = pos.closeDate.slice(0, 10);
+      // closeTotal is the debit/credit from closing legs only
+      closeByDay[day] = (closeByDay[day] || 0) + (pos.closeTotal || 0);
+    }
   });
+
+  // Find date range for month nav
+  const allDays = [...Object.keys(openByDay), ...Object.keys(closeByDay)].sort();
+  const minDate = allDays.length ? new Date(allDays[0]) : new Date();
+  const maxDate = allDays.length ? new Date(allDays[allDays.length-1]) : new Date();
+
+  // Clamp calYear/calMonth to data range
+  const curDate  = new Date(calYear, calMonth, 1);
+  const minMonth = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  const maxMonth = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+
+  function buildCalendar() {
+    const year = calYear, month = calMonth;
+    const firstDay  = new Date(year, month, 1).getDay(); // 0=Sun
+    const daysInMon = new Date(year, month+1, 0).getDate();
+    const monthLabel = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+    // Monthly totals
+    let monthOpenTotal  = 0, monthCloseTotal = 0;
+    for (let d = 1; d <= daysInMon; d++) {
+      const key = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      monthOpenTotal  += openByDay[key]  || 0;
+      monthCloseTotal += closeByDay[key] || 0;
+    }
+    const monthNet = monthOpenTotal + monthCloseTotal;
+
+    // Day cells
+    let cells = '';
+    for (let i = 0; i < firstDay; i++) cells += `<div class="cal-day cal-empty"></div>`;
+    for (let d = 1; d <= daysInMon; d++) {
+      const key = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const op  = openByDay[key]  || 0;
+      const cl  = closeByDay[key] || 0;
+      const hasOp = op !== 0, hasCl = cl !== 0;
+      const today = new Date(); const isToday = today.getFullYear()===year && today.getMonth()===month && today.getDate()===d;
+      cells += `<div class="cal-day${isToday?' cal-today':''}">
+        <span class="cal-date">${d}</span>
+        ${hasOp  ? `<span class="cal-pnl cal-open ${op>=0?'pos':'neg'}">${op>0?'+':''}${fmt(op)}</span>` : ''}
+        ${hasCl  ? `<span class="cal-pnl cal-closed ${cl>=0?'pos':'neg'}">${cl>0?'+':''}${fmt(cl)}</span>` : ''}
+      </div>`;
+    }
+
+    const canPrev = new Date(year, month-1, 1) >= minMonth;
+    const canNext = new Date(year, month+1, 1) <= maxMonth;
+
+    return `
+      <div class="cal-header">
+        <button class="cal-nav" onclick="calNav(-1)" ${canPrev?'':'disabled'}>‹</button>
+        <div>
+          <div class="cal-month-label">${monthLabel}</div>
+          <div class="cal-month-total ${monthNet>=0?'pos':'neg'}">${monthNet>0?'+':''}${fmt(monthNet)} net</div>
+        </div>
+        <button class="cal-nav" onclick="calNav(1)" ${canNext?'':'disabled'}>›</button>
+      </div>
+      <div class="cal-legend">
+        <span class="cal-legend-dot cal-open-dot"></span><span>Open P&L</span>
+        <span class="cal-legend-dot cal-close-dot" style="margin-left:12px"></span><span>Closed P&L</span>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div>
+        <div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div>
+        <div class="cal-dow">Sat</div>
+        ${cells}
+      </div>`;
+  }
+
+  container.innerHTML = `<div class="chart-card" id="calCard">${buildCalendar()}</div>`;
 }
+
+window.calNav = function(dir) {
+  calMonth += dir;
+  if (calMonth < 0)  { calMonth = 11; calYear--; }
+  if (calMonth > 11) { calMonth = 0;  calYear++; }
+  renderSummary(el('tabContent'));
+};
 
 // ── Deposits tab ───────────────────────────────────────────────────────────
 function fmtSgd(n) {
