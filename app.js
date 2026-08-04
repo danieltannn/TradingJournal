@@ -1810,22 +1810,14 @@ window.refreshLivePrices = async function() {
     const interval = setInterval(async () => {
       secs += 5;
       try {
-        const r = await fetch(
-          `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/prices.json?ref=data&t=${Date.now()}`,
-          { cache: 'no-store', headers: ghToken ? ghHeaders() : { 'Accept': 'application/vnd.github+json' } }
-        );
-        if (r.ok) {
-          const meta2 = await r.json();
-          const data = JSON.parse(atob(meta2.content.replace(/\n/g, '')));
-          const ts   = data?.timestamp ? new Date(data.timestamp).getTime() : 0;
-          if (ts > startTs - 5000) {
-            // Fresh data received
-            clearInterval(interval);
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
-            // Re-fetch and update UI
-            const openPositions = ibData.openPositions || {};
-            await fetchAndUpdateLivePrices(Object.keys(openPositions), openPositions);
-          }
+        const data = await fetchPricesJson(); // always fresh, no CDN cache
+        const ts   = data?.timestamp ? new Date(data.timestamp).getTime() : 0;
+        if (ts > startTs - 5000) {
+          clearInterval(interval);
+          if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
+          // Apply already-fetched data directly — no second network request
+          const openPositions = ibData.openPositions || {};
+          applyPriceData(data, openPositions);
         }
       } catch(_) {}
       if (secs >= 90) {
