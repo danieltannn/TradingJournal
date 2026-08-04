@@ -1491,6 +1491,9 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
 
 
 
+// ── Investing tab ──────────────────────────────────────────────────────────
+let activeInvTab = 0; // 0=Holdings, 1=Calculator, 2=Past Options
+
 function renderInvesting(container) {
   const { trades, openPositions, dividends, sgdDeposits, forexTrades, corporateActions } = ibData;
   const hasData = trades.length > 0 || (sgdDeposits || []).length > 0;
