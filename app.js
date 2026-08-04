@@ -1490,6 +1490,303 @@ async function fetchAndUpdateLivePrices(tickers, openPositions) {
 }
 
 
+
+function renderInvesting(container) {
+  const { trades, openPositions, dividends, sgdDeposits, forexTrades, corporateActions } = ibData;
+  const hasData = trades.length > 0 || (sgdDeposits || []).length > 0;
+
+  const splitMap = {};
+  for (const a of (corporateActions || [])) {
+    if (a.type === 'split') splitMap[a.symbol] = a;
+  }
+
+  const importHtml = `
+    <div class="dep-section" style="margin-bottom:12px">
+      <div class="dep-section-header" style="flex-wrap:wrap;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px;min-width:0">
+          <i class="ti ti-file-import" aria-hidden="true"></i>
+          <span style="font-weight:600">IB Statement</span>
+          <span class="dep-count">${trades.length} trades · ${(sgdDeposits||[]).length} SGD</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-left:auto">
+          <button class="inv-import-btn" id="refresh-prices-btn" onclick="refreshLivePrices()">
+            <i class="ti ti-refresh" aria-hidden="true"></i> Refresh
+          </button>
+          <label class="inv-import-btn">
+            <input type="file" accept=".csv" id="ibCsvInput" style="display:none">
+            <i class="ti ti-upload" aria-hidden="true"></i> CSV
+          </label>
+          ${hasData ? `<button class="inv-clear-btn" onclick="clearIbData()">Clear</button>` : ''}
+        </div>
+      </div>
+      <div id="ib-status" style="display:none;font-size:12px;padding:4px 0;color:var(--text-secondary)"></div>
+    </div>`;
+
+  if (!hasData) {
+    container.innerHTML = importHtml + `
+      <div class="upload-zone" style="margin:0;cursor:default">
+        <i class="ti ti-building-bank" aria-hidden="true"></i>
+        <p class="upload-title">No IB data yet</p>
+        <p class="upload-sub">Import your Interactive Brokers Activity Statement CSV above</p>
+        <p class="upload-hint">IB → Reports → Activity → Create Statement → Download CSV</p>
+      </div>`;
+    attachIbFileInput();
+    return;
+  }
+
+  // ── Compute numbers ──
+  const deps   = (sgdDeposits || []);
+  const sgdIn  = deps.filter(d => d.amount > 0).reduce((s, d) => s + d.amount, 0);
+  const sgdOut = deps.filter(d => d.amount < 0).reduce((s, d) => s + d.amount, 0);
+  const sgdNet = sgdIn + sgdOut;
+
+  const fxAll  = (forexTrades || []);
+  const fxIn   = fxAll.filter(f => f.usdAmt > 0);
+  const fxOut  = fxAll.filter(f => f.usdAmt < 0);
+  const usdIn  = fxIn.reduce((s, f) => s + f.usdAmt, 0);
+  const usdOut = fxOut.reduce((s, f) => s + f.usdAmt, 0);
+  const sgdUsed = fxIn.reduce((s, f) => s + Math.abs(f.sgdAmt), 0);
+  const histRate = usdIn > 0 ? sgdUsed / usdIn : 0;
+
+
+  const CURRENT_TICKERS = ['DGRO','FBTC','QQQM','SCHD','SMH','SPYL','VGT'];
+  let totalCostBasis = 0, totalMktVal = 0, totalUnreal = 0;
+  CURRENT_TICKERS.forEach(sym => {
+    const pos = openPositions[sym]; if (!pos) return;
+    totalCostBasis += pos.costBasis || 0;
+    totalMktVal    += pos.mktValue  || 0;
+    totalUnreal    += pos.unrealPL  || 0;
+  });
+
+  // SGD portfolio using historical rate (live rate updates after Yahoo Finance fetch)
+  const prevWin    = PREV_WINNINGS_TOTAL;   // always deduct Endowus + Syfe Trade
+  const origSgd    = sgdNet - prevWin;
+  const portSgd    = histRate > 0 ? totalMktVal * histRate : 0;
+  const plSgd      = portSgd - origSgd;
+  const plSgdPct   = origSgd > 0 ? (plSgd / origSgd * 100).toFixed(1) : '0.0';
+
+  // ── Account details ──
+  const accountHtml = `
+    <div class="inv-account-details">
+      <div class="inv-acct-row inv-acct-3">
+        <div class="inv-acct-item"><div class="sgd-lbl">Deposited (SGD)</div><div class="sgd-val pos">${fmtSgd(sgdIn)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Withdrawn (SGD)</div><div class="sgd-val neg">${fmtSgd(Math.abs(sgdOut))}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Net (SGD)</div><div class="sgd-val">${fmtSgd(sgdNet)}</div></div>
+      </div>
+      <div class="inv-acct-divider"></div>
+      <div class="inv-acct-row inv-acct-3">
+        <div class="inv-acct-item"><div class="sgd-lbl">Deposited (USD)</div><div class="sgd-val pos">${fmt(usdIn)}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Withdrawn (USD)</div><div class="sgd-val neg">${fmt(Math.abs(usdOut))}</div></div>
+        <div class="inv-acct-item"><div class="sgd-lbl">Net (USD)</div><div class="sgd-val">${fmt(usdIn + usdOut)}</div></div>
+      </div>
+      <div class="inv-acct-divider"></div>
+      <div class="inv-acct-row inv-acct-3">
+        <div class="inv-acct-item" onclick="toggleOrigBreakdown()" style="cursor:pointer;user-select:none">
+          <div class="sgd-lbl">Org Amt <i class="ti ti-info-circle" style="font-size:10px;opacity:.6"></i></div>
+          <div class="sgd-val">${fmtSgd(origSgd)}</div>
+          <div id="orig-breakdown" style="display:none;margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border);font-size:11.5px">
+            ${PREV_WINNINGS_SGD.map(w => `<div style="display:flex;justify-content:space-between;color:var(--text-secondary);padding:2px 0"><span>${w.label}</span><span class="neg">-${fmtSgd(w.amount)}</span></div>`).join('')}
+            <div style="display:flex;justify-content:space-between;font-weight:600;color:var(--text);padding-top:4px;margin-top:4px;border-top:0.5px solid var(--border)"><span>Total</span><span class="neg">-${fmtSgd(PREV_WINNINGS_TOTAL)}</span></div>
+          </div>
+        </div>
+        <div class="inv-acct-item">
+          <div class="sgd-lbl">Portfolio (SGD)</div>
+          <div id="sum-mkt" class="sgd-val">${portSgd > 0 ? fmtSgd(portSgd) : '—'}</div>
+          <div id="sum-rate" style="font-size:10px;color:var(--text-tertiary);margin-top:2px">${fmt(totalMktVal)} USD · avg S$${histRate.toFixed(4)}</div>
+        </div>
+        <div class="inv-acct-item">
+          <div class="sgd-lbl">P&L (SGD)</div>
+          <div id="sum-unreal" class="sgd-val ${plSgd >= 0 ? 'pos' : 'neg'}">${plSgd > 0 ? '+' : ''}${portSgd > 0 ? fmtSgd(plSgd) : '—'}</div>
+          <div id="sum-return" style="font-size:11px;margin-top:2px" class="${plSgd >= 0 ? 'pos' : 'neg'}">${portSgd > 0 ? (plSgdPct > 0 ? '+' : '') + plSgdPct + '%' : ''}</div>
+        </div>
+      </div>
+    </div>`;
+
+  // ── Sub-tab bar ──
+  const INV_TABS = ['Holdings', 'Calculator', 'Past Options'];
+  const subTabBar = `
+    <div class="inv-subtab-bar">
+      ${INV_TABS.map((t, i) =>
+        `<button class="inv-subtab ${activeInvTab === i ? 'active' : ''}" onclick="switchInvTab(${i})">${t}</button>`
+      ).join('')}
+    </div>`;
+
+  // ── Sub-tab content ──
+  let subContent = '';
+
+  if (activeInvTab === 0) {
+    // Holdings
+    const tickerRows = CURRENT_TICKERS.map(sym => {
+      const pos = openPositions[sym]; if (!pos) return '';
+      const split      = splitMap[sym];
+      const allTrades  = trades.filter(t => t.symbol === sym).sort((a, b) => (a.dateRaw||'').localeCompare(b.dateRaw||''));
+      const realPL     = allTrades.filter(t => t.qty < 0).reduce((s, t) => s + (t.realPL||0), 0);
+      const totalPL    = (pos.unrealPL || 0) + realPL;
+      const totalPct   = pos.costBasis > 0 ? (totalPL / pos.costBasis * 100).toFixed(1) : '0.0';
+      const unrealPct  = pos.costBasis > 0 ? ((pos.unrealPL||0) / pos.costBasis * 100).toFixed(1) : '0.0';
+      const buyCount   = allTrades.filter(t => t.qty > 0).length;
+      const sellCount  = allTrades.filter(t => t.qty < 0).length;
+
+      const tradeRows = allTrades.map(t => {
+        const isBuy = t.qty > 0;
+        return `<tr>
+          <td>${(t.dateRaw||'').slice(0,10)}</td>
+          <td><span class="badge ${isBuy?'open':'closed'}">${isBuy?'BUY':'SELL'}</span></td>
+          <td class="mono">${Math.abs(t.qty).toFixed(4)}</td>
+          <td class="mono">$${t.tPrice.toFixed(2)}</td>
+          <td class="${isBuy?'neg':'pos'}">$${Math.abs(t.proceeds).toFixed(2)}</td>
+          <td class="neg">$${Math.abs(t.comm).toFixed(2)}</td>
+          <td class="${t.realPL > 0 ? 'pos' : t.realPL < 0 ? 'neg' : ''}">${!isBuy && t.realPL !== 0 ? (t.realPL>0?'+':'')+'$'+t.realPL.toFixed(2) : '—'}</td>
+        </tr>`;
+      }).join('');
+
+      return `
+        <div class="inv-sym-card" id="inv-sym-${sym}">
+          <div class="inv-sym-header" onclick="toggleInvSym('${sym}')">
+            <div class="inv-sym-left">
+              <span class="badge trade" style="font-size:12px;padding:3px 8px">${sym}</span>
+              ${split ? `<span class="badge expired" style="font-size:10px;padding:2px 5px">${split.ratio} split</span>` : ''}
+              <div class="inv-sym-meta">
+                <span>${pos.qty.toFixed(4)} sh</span>
+                <span class="inv-sep">·</span>
+                <span>avg $${(pos.costPrice||0).toFixed(2)}</span>
+              </div>
+            </div>
+            <div class="inv-sym-right">
+              <div class="inv-stat">
+                <span class="inv-stat-label">Invested</span>
+                <span class="inv-stat-val" style="color:var(--text)">${fmt(pos.costBasis)}</span>
+              </div>
+              <div class="inv-stat">
+                <span class="inv-stat-label">Mkt Val</span>
+                <span class="inv-stat-val" id="live-mkt-${sym}">${fmt(pos.mktValue)}</span>
+              </div>
+              <div class="inv-stat">
+                <span class="inv-stat-label">Unreal P&L</span>
+                <span class="inv-stat-val ${(pos.unrealPL||0)>=0?'pos':'neg'}" id="live-unreal-${sym}">${(pos.unrealPL||0)>0?'+':''}${fmt(pos.unrealPL||0)} <span id="live-unreal-pct-${sym}" style="font-size:10px;font-weight:500">(${unrealPct||'0.0'}%)</span></span>
+              </div>
+              ${realPL !== 0 ? `<div class="inv-stat">
+                <span class="inv-stat-label">Real P&L</span>
+                <span class="inv-stat-val ${realPL>=0?'pos':'neg'}" id="live-real-${sym}">${realPL>0?'+':''}${fmt(realPL)}</span>
+              </div>` : ''}
+              <i class="ti ti-chevron-down inv-chevron" aria-hidden="true"></i>
+            </div>
+          </div>
+          <div class="inv-sym-body">
+            <div class="tbl-wrap" style="margin:10px 14px 14px">
+              ${split ? `<div style="font-size:11px;color:var(--text-tertiary);padding:6px 10px;background:var(--bg-secondary);border-bottom:0.5px solid var(--border)"><i class="ti ti-info-circle"></i> ${split.ratio} split on ${split.date}. Pre-split trades show original qty &amp; price.</div>` : ''}
+              <table>
+                <thead><tr><th>Date</th><th>Type</th><th>Qty</th><th>Price</th><th>Cost/Proc</th><th>Comm</th><th>Real P&L</th></tr></thead>
+                <tbody>${tradeRows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>`;
+    }).filter(Boolean).join('');
+
+    // Pie chart by market value
+    const pieColors = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#ff7b72','#ffa657','#39d353'];
+    const pieData   = CURRENT_TICKERS.map((sym, i) => ({ sym, val: openPositions[sym]?.mktValue || 0, color: pieColors[i] })).filter(d => d.val > 0);
+    const totalMv   = pieData.reduce((s, d) => s + d.val, 0);
+    const legendHtml = pieData.map(d => `
+      <div class="pie-legend-item">
+        <span class="pie-dot" style="background:${d.color}"></span>
+        <span class="pie-sym">${d.sym}</span>
+        <span class="pie-pct">${(d.val/totalMv*100).toFixed(1)}%</span>
+      </div>`).join('');
+
+    const totalRealPLAll = trades.filter(t => t.qty < 0).reduce((s, t) => s + (t.realPL||0), 0);
+    const totalPLAll     = totalUnreal + totalRealPLAll;
+    const totalPLPct     = totalCostBasis > 0 ? (totalPLAll / totalCostBasis * 100).toFixed(1) : '0.0';
+    const totalDiv       = (dividends || []).reduce((s, d) => s + d.amount, 0);
+
+    subContent = `
+      <div class="sgd-grid" style="margin-bottom:12px">
+        <div class="sgd-cell"><div class="sgd-lbl">Amount Invested</div><div class="sgd-val pos">${fmt(totalCostBasis)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Market Value</div><div class="sgd-val" id="hold-mkt">${fmt(totalMktVal)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Total P&L</div><div class="sgd-val ${totalPLAll>=0?'pos':'neg'}" id="hold-pl">${totalPLAll>0?'+':''}${fmt(totalPLAll)}</div><div id="hold-pl-pct" style="font-size:11px;margin-top:2px" class="${totalPLAll>=0?'pos':'neg'}">${totalPLPct>0?'+':''}${totalPLPct}%</div></div>
+        <div class="sgd-divider"></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Unrealised</div><div class="sgd-val ${totalUnreal>=0?'pos':'neg'}" id="hold-unreal">${totalUnreal>0?'+':''}${fmt(totalUnreal)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Realised</div><div class="sgd-val ${totalRealPLAll>=0?'pos':'neg'}" id="hold-real">${totalRealPLAll>0?'+':''}${fmt(totalRealPLAll)}</div></div>
+        <div class="sgd-cell"><div class="sgd-lbl">Dividends</div><div class="sgd-val pos">${fmt(totalDiv)}</div></div>
+      </div>
+      <div class="holdings-pie-card">
+        <canvas id="holdingsPie" aria-label="Holdings allocation"></canvas>
+        <div class="pie-legend" id="pieLegend">${legendHtml}</div>
+      </div>
+      <div class="inv-holdings">${tickerRows}</div>`;
+
+  } else if (activeInvTab === 1) {
+    subContent = buildCalculator();
+  } else {
+    subContent = buildOptionsSection();
+  }
+
+  container.innerHTML = importHtml + accountHtml + subTabBar + `<div class="inv-subtab-content">${subContent}</div>`;
+  attachIbFileInput();
+  window._ibOpenPositions = openPositions;
+
+  requestAnimationFrame(() => {
+    if (activeInvTab === 2) renderOptChart();
+
+    if (activeInvTab === 0) {
+      const pie    = el('holdingsPie');
+      const legend = el('pieLegend');
+      if (pie && window.Chart) {
+      const pieColors = ['#58a6ff','#3fb950','#f0883e','#bc8cff','#ff7b72','#ffa657','#39d353'];
+      const pieData   = CURRENT_TICKERS.map((sym, i) => ({ sym, val: openPositions[sym]?.mktValue || 0, color: pieColors[i] })).filter(d => d.val > 0);
+      const totalMv   = pieData.reduce((s, d) => s + d.val, 0);
+      new Chart(pie, {
+        type: 'doughnut',
+        data: {
+          labels: pieData.map(d => d.sym),
+          datasets: [{ data: pieData.map(d => +d.val.toFixed(2)), backgroundColor: pieData.map(d => d.color), borderWidth: 3, borderColor: '#161b22', hoverOffset: 6 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: true, cutout: '55%',
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.parsed)} (${(ctx.parsed/totalMv*100).toFixed(1)}%)` } }
+          }
+        }
+      });
+      }
+    }
+
+    fetchAndUpdateLivePrices(CURRENT_TICKERS, openPositions);
+
+    // Fetch live USD/SGD rate independently (frankfurter.app)
+    fetchLiveUsdSgdRate().then(rate => {
+      if (!rate) return;
+      const mktVal  = Object.values(openPositions).reduce((s,p)=>s+(p.mktValue||0),0);
+      const liveSgd = mktVal * rate;
+      const origSgd2 = (ibData.sgdDeposits||[]).reduce((s,d)=>s+d.amount,0) - PREV_WINNINGS_TOTAL;
+      const plSgd2  = liveSgd - origSgd2;
+      const plPct2  = origSgd2 > 0 ? (plSgd2/origSgd2*100).toFixed(1) : '0.0';
+      const fS      = n => 'S$' + Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+      const mktEl   = el('sum-mkt');
+      const rateEl  = el('sum-rate');
+      const unrEl   = el('sum-unreal');
+      const retEl   = el('sum-return');
+      if (mktEl)  mktEl.textContent  = fS(liveSgd);
+      if (rateEl) rateEl.textContent = `${fmt(mktVal)} USD · live 1 USD = S$${rate.toFixed(4)}`;
+      if (unrEl)  { unrEl.textContent = `${plSgd2>0?'+':''}${fS(plSgd2)}`; unrEl.className = `sgd-val ${plSgd2>=0?'pos':'neg'}`; }
+      if (retEl)  { retEl.textContent = `${plPct2>0?'+':''}${plPct2}%`;    retEl.className = plSgd2>=0?'pos':'neg'; }
+    });
+  });
+}
+
+window.switchInvTab = function(i) {
+  activeInvTab = i;
+  renderInvesting(el('tabContent'));
+};
+
+
+window.toggleOrigBreakdown = function() {
+  const box = document.getElementById('orig-breakdown');
+  if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+};
+
 window.refreshLivePrices = async function() {
   const btn    = document.getElementById('refresh-prices-btn');
   const status = document.getElementById('ib-status');
@@ -1510,17 +1807,23 @@ window.refreshLivePrices = async function() {
     const interval = setInterval(async () => {
       secs += 5;
       try {
-        try {
-          const data = await fetchPricesJson(); // always fresh via Contents API
+        const r = await fetch(
+          `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/prices.json?ref=data&t=${Date.now()}`,
+          { cache: 'no-store', headers: ghToken ? ghHeaders() : { 'Accept': 'application/vnd.github+json' } }
+        );
+        if (r.ok) {
+          const meta2 = await r.json();
+          const data = JSON.parse(atob(meta2.content.replace(/\n/g, '')));
           const ts   = data?.timestamp ? new Date(data.timestamp).getTime() : 0;
           if (ts > startTs - 5000) {
+            // Fresh data received
             clearInterval(interval);
             if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-refresh"></i> Refresh'; }
-            // Apply already-fetched data directly — no second fetch
+            // Re-fetch and update UI
             const openPositions = ibData.openPositions || {};
-            applyPriceData(data, openPositions);
+            await fetchAndUpdateLivePrices(Object.keys(openPositions), openPositions);
           }
-        } catch(_) {}
+        }
       } catch(_) {}
       if (secs >= 90) {
         clearInterval(interval);
@@ -1630,6 +1933,7 @@ async function mergeAndCommitIb(csvText) {
 
   if (!ghToken) { showTokenModal(doSave); } else { await doSave(); }
 }
+
 
 // ── IB CSV parser ──────────────────────────────────────────────────────────
 function parseIbCSV(text) {
